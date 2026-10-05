@@ -1,0 +1,10 @@
+{
+  // Node/Bun scripts: Node types only. Workers types declare `process: any`,
+  // which hides process.exit narrowing, so scripts are checked separately.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.ts"],
+  "exclude": ["scripts/inspect-chat.ts", "scripts/list-chat-resources.ts", "scripts/watch-chat-click.ts"]
+}

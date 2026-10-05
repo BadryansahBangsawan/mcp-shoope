@@ -1,0 +1,47 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "shopee-mcp",
+  "account_id": "affb450d746e53150028bb763b2f640c",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-15",
+  // global_fetch_strictly_public: SSRF protection for OAuth CIMD client metadata fetches.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Serve only on the custom domain so the OAuth resource/audience is stable.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "mcp.shopee.badry.engineer", "custom_domain": true }],
+  // Local dev: keep request.url on localhost (routes would otherwise rewrite it to the custom domain).
+  "dev": { "ip": "127.0.0.1", "port": 8787, "local_protocol": "http", "upstream_protocol": "http", "host": "localhost:8787" },
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "732304f837a2439b86464ebfe91b0fe4" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "MUTATION_APPROVALS", "class_name": "MutationApprovalsDO" },
+      { "name": "SHOPEE_SESSIONS", "class_name": "ShopeeSessionsDO" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MutationApprovalsDO", "ShopeeSessionsDO"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "PUBLIC_BASE_URL": "https://mcp.shopee.badry.engineer",
+    "ENABLE_MUTATIONS": "false",
+    "ENABLE_WIDGETS": "false",
+    "ALLOW_DEV_PSK": "false",
+    "REQUIRE_SESSION_ENCRYPTION": "true",
+    "MCP_LEGACY_MODE": "reject",
+    "MCP_SERVER_NAME": "shopee-mcp",
+    "MCP_SERVER_VERSION": "0.1.0",
+    "SHOPEE_REGION": "ID"
+  }
+  // Secrets (wrangler secret put): OWNER_PASSWORD, SESSION_ENCRYPTION_KEY
+}

@@ -1,0 +1,23 @@
+node_modules/
+.dev.vars
+.wrangler/
+dist/
+.DS_Store
+*.tgz
+.env
+.env.*
+coverage/
+*.log
+TASK.md
+
+# Local copy of production secrets (move to a password manager)
+.secrets.production
+
+# Local git worktrees
+.worktrees/
+
+# Sidecar capture / paste (never commit)
+.runtime/
+storage-state.json
+paste-bundle.json
+*.har

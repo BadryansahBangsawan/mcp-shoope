@@ -1,0 +1,19 @@
+# Copy to .dev.vars for local `wrangler dev`. Never commit .dev.vars.
+# Values here override wrangler.jsonc "vars" locally.
+
+PUBLIC_BASE_URL=http://localhost:8787
+
+# Owner password for /authorize consent, /login and /connect (>= 16 chars).
+# Production: wrangler secret put OWNER_PASSWORD
+OWNER_PASSWORD=
+
+# AES-GCM key for Shopee session storage + owner-cookie HMAC derivation.
+# Generate: openssl rand -base64 32   Production: wrangler secret put SESSION_ENCRYPTION_KEY
+SESSION_ENCRYPTION_KEY=
+REQUIRE_SESSION_ENCRYPTION=true
+
+# Local-only pre-shared bearer key (>= 16 chars). Honoured only on localhost/127.0.0.1.
+ALLOW_DEV_PSK=true
+DEV_PSK=
+
+SHOPEE_REGION=ID

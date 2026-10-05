@@ -1,0 +1,40 @@
+{
+  "name": "shopee-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:dry-run": "wrangler deploy --dry-run --outdir=dist",
+    "cf-typegen": "wrangler types",
+    "check-types": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "coverage:validate": "bun run scripts/validate-coverage.ts",
+    "openapi:validate": "bun run scripts/validate-openapi.ts",
+    "build": "wrangler deploy --dry-run --outdir=dist",
+    "docs:bundle": "bun run scripts/bundle-docs.ts",
+    "coverage:report": "bun run scripts/validate-coverage.ts --write-report",
+    "e2e": "bun run scripts/e2e-mcp.ts",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@cloudflare/codemode": "^0.5.2",
+    "@cloudflare/workers-oauth-provider": "0.10.3",
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "^0.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "^26.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.131.2"
+  }
+}
