@@ -3,6 +3,8 @@ import {
   CookieJar,
   MAX_COOKIES,
   MAX_VALUE_LEN,
+  cookieMatchesHost,
+  hasBuyerSessionCookie,
   isStoredCookie,
 } from "../../src/connect/cookie-jar";
 import type { StoredCookie } from "../../src/session/types";
@@ -143,5 +145,49 @@ describe("CookieJar headerFor / path", () => {
     );
     expect(jar.headerFor(WWW)).toContain("SPC_EC=ec");
     expect(jar.headerFor(WWW)).toContain("csrftoken=csrf-value");
+  });
+});
+
+describe("hasBuyerSessionCookie", () => {
+  it("requires SPC_EC or SPC_ST that would be sent to the buyer apex", () => {
+    expect(hasBuyerSessionCookie([cookie({ name: "SPC_EC", value: "x" })])).toBe(true);
+    expect(hasBuyerSessionCookie([cookie({ name: "SPC_ST", value: "x" })])).toBe(true);
+    expect(hasBuyerSessionCookie([cookie({ name: "csrftoken", value: "x" })])).toBe(false);
+    expect(hasBuyerSessionCookie([cookie({ name: "SPC_EC", value: "" })])).toBe(false);
+    expect(
+      cookieMatchesHost(
+        { name: "SPC_EC", value: "x", domain: "www.shopee.co.id", hostOnly: true, path: "/" },
+        "shopee.co.id",
+      ),
+    ).toBe(false);
+    expect(
+      hasBuyerSessionCookie(
+        [{ name: "SPC_EC", value: "x", domain: "www.shopee.co.id", hostOnly: true, path: "/" }],
+        "shopee.co.id",
+      ),
+    ).toBe(false);
+    expect(
+      hasBuyerSessionCookie(
+        [{ name: "SPC_EC", value: "x", domain: "shopee.co.id", hostOnly: false, path: "/" }],
+        "shopee.co.id",
+      ),
+    ).toBe(true);
+  });
+
+  it("Domain=.shopee.co.id is sent to the apex even if hostOnly was true", () => {
+    const dotted: StoredCookie = {
+      name: "SPC_EC",
+      value: "ec",
+      domain: ".shopee.co.id",
+      hostOnly: true,
+      path: "/",
+    };
+    expect(cookieMatchesHost(dotted, "shopee.co.id")).toBe(true);
+    expect(hasBuyerSessionCookie([dotted], "shopee.co.id")).toBe(true);
+
+    const jar = CookieJar.fromJSON([dotted]);
+    expect(jar.get(WWW, "SPC_EC")).toBe("ec");
+    expect(jar.headerFor(WWW)).toContain("SPC_EC=ec");
+    expect(jar.toJSON()[0]).toMatchObject({ domain: "shopee.co.id", hostOnly: false });
   });
 });

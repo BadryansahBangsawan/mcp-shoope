@@ -35,4 +35,5 @@ Klien MCP --Bearer--> Worker https://mcp.shopee.badry.engineer/mcp
 
 Hanya `search` dan `execute`. `execute_mutation` tidak terdaftar di v1. Resources: `shopee://docs|openapi|capabilities|coverage`. Prompts: `riwayat-beli`, `detail-pesanan`, `ringkas-akun`.
 
-Katalog operasi **kosong** sampai XHR akun ter-capture (`observed`).
+Katalog v1: **12** operasi baca `observed` (profil, pesanan, keranjang, alamat, voucher, notifikasi, koin). Chat skip — host `seller.shopee.co.id` tidak di-allowlist. Manifest: `docs/architecture/coverage.md`. GET `/mcp` tanpa Bearer = 401 (OAuth). Connect harus di host produksi; deploy tidak menyalin jar lokal.
+

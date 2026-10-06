@@ -5,7 +5,8 @@
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OTP_RE = /^[A-Za-z0-9]{4,8}$/;
-const OTP_HINT = /otp|vcode|ivs|verify|sms|whatsapp/i;
+/** Docs: otp / vcode / ivs. `verify` is too broad (failed-password copy). */
+const OTP_HINT = /otp|vcode|ivs/i;
 const CAPTCHA_HINT = /captcha|anti.?bot|af-ac|recaptcha|slider|unusual traffic/i;
 
 export function normalizeUsername(raw: string): string {

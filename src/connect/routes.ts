@@ -6,7 +6,7 @@ import {
   sessionsDoForOwner,
   type ShopeeSessionsStub,
 } from "../session/shopee-session";
-import { maskTokenPrefix } from "../session/types";
+import { maskTokenPrefix, type PendingAuthState } from "../session/types";
 import { htmlResponse } from "../web/html";
 import {
   assertFormCsrf,
@@ -27,6 +27,7 @@ import { isValidOtp, normalizeUsername } from "./login-parse";
 import { validatePasteBundle } from "./paste";
 import {
   appErrorLike,
+  connectStepErrorHtml,
   jsonResponse,
   mapConnectError,
   readFormFields,
@@ -64,18 +65,19 @@ async function loginAttemptAllowed(
   return { ok: false, retryAfterMs: Math.max(...blocked.map((r) => r.retryAfterMs)) };
 }
 
-function rateLimited(request: Request, identity: ConnectIdentity, retryAfterMs: number): Response {
+function rateLimited(
+  request: Request,
+  identity: ConnectIdentity,
+  retryAfterMs: number,
+  pending?: PendingAuthState | null,
+): Response {
   const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
   const msg = `Terlalu banyak percobaan masuk; coba lagi dalam ${seconds}s`;
   const res = wantsJson(request)
     ? jsonResponse({ code: ErrorCodes.SHOPEE_RATE_LIMITED, message: msg }, 429)
-    : htmlResponse(connectLoginPage({ csrfToken: identity.csrfToken, statusHtml: panelDanger(msg) }), 429);
+    : htmlResponse(connectStepErrorHtml(identity.csrfToken, msg, pending), 429);
   res.headers.set("retry-after", String(seconds));
   return res;
-}
-
-function panelDanger(msg: string): string {
-  return `<div class="panel panel-danger err" role="alert"><span>${msg}</span></div>`;
 }
 
 function gone(request: Request, identity: ConnectIdentity, msg: string): Response {
@@ -133,10 +135,23 @@ export async function handleConnectRoutes(
 
     if (request.method === "GET" && url.pathname === "/connect") {
       const pending = await doStub.getPending();
-      const html = pending
-        ? connectOtpPage({ csrfToken: identity.csrfToken, pending })
-        : connectLoginPage({ csrfToken: identity.csrfToken });
-      return respond(htmlResponse(html));
+      if (pending) {
+        return respond(htmlResponse(connectOtpPage({ csrfToken: identity.csrfToken, pending })));
+      }
+      const session = await doStub.getSession();
+      if (session) {
+        return respond(
+          htmlResponse(
+            connectSuccessHtml({
+              csrfToken: identity.csrfToken,
+              via: session.source,
+              cookieCount: session.cookies.length,
+              userPrefix: session.userId ? maskTokenPrefix(session.userId) : undefined,
+            }),
+          ),
+        );
+      }
+      return respond(htmlResponse(connectLoginPage({ csrfToken: identity.csrfToken })));
     }
 
     if (request.method === "GET" && url.pathname === "/connect/status") {
@@ -175,7 +190,7 @@ export async function handleConnectRoutes(
         throw new AppError(ErrorCodes.INVALID_INPUT, "Tidak ada OTP yang menunggu. Masuk ulang.");
       }
       const rate = await loginAttemptAllowed(doStub, request, pendingPeek.username);
-      if (!rate.ok) return respond(rateLimited(request, identity, rate.retryAfterMs));
+      if (!rate.ok) return respond(rateLimited(request, identity, rate.retryAfterMs, pendingPeek));
       const pending = await doStub.takePending();
       if (!pending) {
         throw new AppError(ErrorCodes.INVALID_INPUT, "Tidak ada OTP yang menunggu. Masuk ulang.");
@@ -196,7 +211,7 @@ export async function handleConnectRoutes(
         throw new AppError(ErrorCodes.INVALID_INPUT, "Tidak ada OTP yang menunggu. Masuk ulang.");
       }
       const rate = await loginAttemptAllowed(doStub, request, pending.username);
-      if (!rate.ok) return respond(rateLimited(request, identity, rate.retryAfterMs));
+      if (!rate.ok) return respond(rateLimited(request, identity, rate.retryAfterMs, pending));
       return respond(
         await withPendingCleanup(doStub, async () => {
           const result = await resendOtp({ pending });
@@ -265,7 +280,8 @@ export async function handleConnectRoutes(
 
     return respond(new Response("Not Found", { status: 404, headers: { "cache-control": "no-store" } }));
   } catch (err) {
-    return respond(mapConnectError(request, identity.csrfToken, err));
+    const pending = await doStub.getPending().catch(() => null);
+    return respond(mapConnectError(request, identity.csrfToken, err, pending));
   }
 }
 

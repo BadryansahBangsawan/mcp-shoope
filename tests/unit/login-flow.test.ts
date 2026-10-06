@@ -9,6 +9,7 @@ import {
   runShopeeLoginFlow,
 } from "../../src/connect/login-flow";
 import {
+  isOtpHint,
   isValidOtp,
   normalizeUsername,
   parseLoginJson,
@@ -74,6 +75,15 @@ describe("normalizeUsername / OTP", () => {
       error: "need_otp",
       message: "verify",
     });
+  });
+
+  it("OTP hint is otp/vcode/ivs, not a generic verify", () => {
+    expect(isOtpHint("error_need_otp", "please verify")).toBe(true);
+    expect(isOtpHint("need_vcode", "")).toBe(true);
+    expect(isOtpHint("error_ivs", "")).toBe(true);
+    expect(isOtpHint("ivs", "challenge")).toBe(true);
+    expect(isOtpHint("error_password", "Please verify your password")).toBe(false);
+    expect(isOtpHint("error_param", "invalid")).toBe(false);
   });
 });
 
@@ -171,6 +181,28 @@ describe("runShopeeLoginFlow", () => {
     expect(body.username).toBe("6281234567890");
   });
 
+  it("password failure that says verify is an error, not needs_otp", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async (input) => {
+      if (String(input) === LOGIN_PAGE_URL) return loginPageOk();
+      return json({ error: "error_password", message: "Please verify your password" });
+    });
+    const result = await runShopeeLoginFlow({ username: "a@b.co", password: "x", fetchImpl });
+    expect(result.kind).toBe("error");
+  });
+
+  it("password JSON with an ivs key is error, not needs_otp", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async (input) => {
+      if (String(input) === LOGIN_PAGE_URL) return loginPageOk();
+      return json({
+        error: "error_password",
+        message: "wrong password",
+        data: { ivs: { token: "x" } },
+      });
+    });
+    const result = await runShopeeLoginFlow({ username: "a@b.co", password: "x", fetchImpl });
+    expect(result.kind).toBe("error");
+  });
+
   it("login JSON captcha → needs_paste; 429 keeps the error status", async () => {
     const captcha = vi.fn<FetchLike>(async (input) => {
       if (String(input) === LOGIN_PAGE_URL) return loginPageOk();
@@ -222,5 +254,14 @@ describe("continueWithOtp / resendOtp", () => {
     });
     const result = await resendOtp({ pending: pending(), fetchImpl });
     expect(result.kind).toBe("needs_otp");
+  });
+
+  it("resend success without session cookies keeps OTP pending", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => json({ error: 0, data: {} }));
+    const result = await resendOtp({ pending: pending(), fetchImpl });
+    expect(result.kind).toBe("needs_otp");
+    if (result.kind !== "needs_otp") throw new Error("expected needs_otp");
+    expect(result.pending.username).toBe("buyer@example.com");
+    expect(result.pending).not.toHaveProperty("password");
   });
 });

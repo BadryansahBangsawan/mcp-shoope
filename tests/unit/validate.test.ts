@@ -182,6 +182,17 @@ describe("validateOperationInput — types, coercion and bounds", () => {
     expect(out.query).toEqual({ time_from: 1, time_to: 2 });
   });
 
+  it("coerces only safe integers onto string fields (order_id)", () => {
+    const detail = OPERATIONS.find((o) => o.operationId === "orders.detail");
+    expect(detail).toBeDefined();
+    expect(validateOperationInput(detail!, { query: { order_id: 12345 } }).query).toEqual({
+      order_id: "12345",
+    });
+    const unsafe = invalid(detail!, { query: { order_id: Number.MAX_SAFE_INTEGER + 2 } });
+    expect(unsafe.message).toMatch(/order_id/);
+    expect(unsafe.message).toMatch(/expected string/);
+  });
+
   it("rejects over-long strings", () => {
     const search = syntheticOp({
       inputSchema: {

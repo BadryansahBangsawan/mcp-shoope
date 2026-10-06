@@ -212,6 +212,12 @@ describe("ShopeeDispatcher envelope + HTTP errors", () => {
     });
     expect(json403.markExpired).not.toHaveBeenCalled();
 
+    const auth403 = dispatcher(respondWith(() => json({ error: "error_auth" }, 403)));
+    await expect(auth403.d.dispatch({ operationId: "account.profile" })).rejects.toMatchObject({
+      code: ErrorCodes.FORBIDDEN,
+    });
+    expect(auth403.markExpired).not.toHaveBeenCalled();
+
     const html403 = dispatcher(
       respondWith(() => html("<html><form action='/buyer/login'>password login</form></html>", 403)),
     );

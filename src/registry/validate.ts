@@ -294,7 +294,8 @@ function coerce(
       return { ok: false };
     case "string":
       if (typeof value === "string") return { ok: true, value };
-      if (typeof value === "number" && Number.isFinite(value)) {
+      // Unsafe integers silently round in IEEE-754 (Shopee order_id can exceed 16 digits).
+      if (typeof value === "number" && Number.isSafeInteger(value)) {
         return { ok: true, value: String(value) };
       }
       return { ok: false };

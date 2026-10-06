@@ -33,7 +33,7 @@ export const FAKE_OPS: Record<string, ApiOperation> = {
     title: "Profil",
     description: "test",
     method: "GET",
-    pathTemplate: "/api/v4/account/profile",
+    pathTemplate: "/api/v4/account/profile", // overlay path; capture is get_profile
     safety: "read",
     sourceDocument: "account.md",
     inputSchema: closed(),

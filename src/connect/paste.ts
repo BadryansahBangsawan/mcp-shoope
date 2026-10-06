@@ -1,7 +1,7 @@
-import { isBuyerShopeeDomain } from "../dispatcher/allowlist";
+import { HOSTS, isBuyerShopeeDomain } from "../dispatcher/allowlist";
 import { AppError, ErrorCodes } from "../errors/codes";
 import type { StoredCookie } from "../session/types";
-import { COOKIE_NAME_RE, MAX_COOKIES, MAX_VALUE_LEN } from "./cookie-jar";
+import { COOKIE_NAME_RE, hasBuyerSessionCookie, MAX_COOKIES, MAX_VALUE_LEN } from "./cookie-jar";
 
 export const PASTE_BUNDLE_VERSION = 1;
 export const PASTE_SOURCE = "browser-export";
@@ -60,6 +60,12 @@ export function validatePasteBundle(raw: unknown): ValidatedPaste {
       "Paste bundle has no cookies on shopee.co.id (seller/partner and third-party cookies are dropped)",
     );
   }
+  if (!hasBuyerSessionCookie(cookies, HOSTS.www)) {
+    throw new AppError(
+      ErrorCodes.INVALID_INPUT,
+      "Paste bundle needs session cookie SPC_EC or SPC_ST for shopee.co.id",
+    );
+  }
 
   const csrf = cookies.find((c) => c.name === "csrftoken" && c.value);
   const uid = cookies.find((c) => c.name === "SPC_U")?.value;
@@ -89,14 +95,20 @@ function toStoredCookie(raw: unknown): StoredCookie | null {
     throw new AppError(ErrorCodes.INVALID_INPUT, "Cookie domain is required");
   }
   const originalDomain = c.domain.trim();
-  const domain = originalDomain.replace(/^\./, "").toLowerCase();
+  let domain = originalDomain.replace(/^\./, "").toLowerCase();
   if (!isBuyerShopeeDomain(domain)) return null;
+  // Dispatcher only talks to the apex. Host-only www cookies would never be sent.
+  let hostOnly = !originalDomain.startsWith(".");
+  if (domain === "www.shopee.co.id") {
+    domain = HOSTS.www;
+    hostOnly = false;
+  }
   const path = typeof c.path === "string" && c.path.startsWith("/") ? c.path : "/";
   const cookie: StoredCookie = {
     name: c.name,
     value: c.value,
     domain,
-    hostOnly: !originalDomain.startsWith("."),
+    hostOnly,
     path,
   };
   const expiresAt = expiresToMs(c.expires);

@@ -2,7 +2,7 @@ import { discardBody, readStreamCapped } from "../dispatcher/upstream";
 import { AppError, ErrorCodes, type ErrorCode } from "../errors/codes";
 import { log } from "../observability/log";
 import type { ShopeeSessionsStub } from "../session/shopee-session";
-import { maskTokenPrefix } from "../session/types";
+import { maskTokenPrefix, type PendingAuthState } from "../session/types";
 import { htmlResponse } from "../web/html";
 import {
   connectErrorHtml,
@@ -234,13 +234,18 @@ function escText(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function mapConnectError(request: Request, csrfToken: string, err: unknown): Response {
+export function mapConnectError(
+  request: Request,
+  csrfToken: string,
+  err: unknown,
+  pending?: PendingAuthState | null,
+): Response {
   const app = appErrorLike(err);
   if (app) {
     if (wantsJson(request)) {
       return jsonResponse({ code: app.code, message: app.message }, app.status);
     }
-    return htmlResponse(connectErrorHtml({ csrfToken, message: app.message }), app.status);
+    return htmlResponse(connectStepErrorHtml(csrfToken, app.message, pending), app.status);
   }
   log("error", "connect.unhandled", {
     err: err instanceof Error ? err.name : typeof err,
@@ -248,5 +253,22 @@ export function mapConnectError(request: Request, csrfToken: string, err: unknow
   if (wantsJson(request)) {
     return jsonResponse({ code: ErrorCodes.UPSTREAM_ERROR, message: "Internal error" }, 500);
   }
-  return htmlResponse(connectErrorHtml({ csrfToken, message: "Kesalahan internal. Coba lagi." }), 500);
+  return htmlResponse(
+    connectStepErrorHtml(csrfToken, "Kesalahan internal. Coba lagi.", pending),
+    500,
+  );
+}
+
+/** OTP-step failures stay on the OTP form while pending exists; otherwise the password form. */
+export function connectStepErrorHtml(
+  csrfToken: string,
+  message: string,
+  pending?: PendingAuthState | null,
+): string {
+  const statusHtml = `<div class="panel panel-danger err" role="alert">
+  <span class="status-icon" aria-hidden="true">!</span>
+  <div><strong>Gagal</strong><br/><span>${escText(message)}</span></div>
+</div>`;
+  if (pending) return connectOtpPage({ csrfToken, pending, statusHtml });
+  return connectErrorHtml({ csrfToken, message });
 }

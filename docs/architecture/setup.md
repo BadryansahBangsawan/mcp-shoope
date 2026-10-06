@@ -30,14 +30,18 @@ Bundle paste:
 { "v": 1, "source": "browser-export", "cookies": [{ "name", "value", "domain", "path" }] }
 ```
 
-Hanya domain `shopee.co.id` / `*.shopee.co.id`. Cookie pihak ketiga di-drop.
+Hanya domain `shopee.co.id` / `*.shopee.co.id`. Wajib `SPC_EC` atau `SPC_ST` yang domain-match apex. Cookie `www.shopee.co.id` di-rewrite ke `shopee.co.id` (`hostOnly: false`). Pihak ketiga / seller / partner di-drop.
+
+Buka `/mcp` di browser tanpa Bearer = **401** (RFC 6750). Cek hidup lewat `/healthz`.
 
 ## 3. Capture (prasyarat operasi read)
 
-Login di browser sendiri ke `shopee.co.id`. Export Network (HAR keys-only) atau catat DevTools. Jangan commit HAR/cookie. Isi checklist di `docs/*.md` lalu daftarkan ops dengan evidence `observed`.
+Read v1 sudah `observed` (12 ops). Capture lanjutan hanya untuk path baru. Login di browser sendiri ke `shopee.co.id`. Export Network (HAR keys-only). Jangan commit HAR/cookie. Isi `docs/*.md` lalu daftarkan ops dengan evidence `observed`.
 
-Tanpa sesi Connect: `execute` gagal `SHOPEE_AUTH_EXPIRED`. Chat masih menunggu capture di host yang di-allowlist.
+Tanpa sesi Connect: `execute` gagal `SHOPEE_AUTH_EXPIRED`. Chat **tidak** di v1: tab ChatEasy memakai `seller.shopee.co.id` (tidak di-allowlist; jangan tulis METHOD URL).
 
 ## 4. Deploy
 
-Hanya jika operator minta. Domain custom `mcp.shopee.badry.engineer`, `workers_dev: false`. DNS CNAME ke Worker. WAF: izinkan `160.79.104.0/21` jika klien Claude.ai.
+Domain custom `mcp.shopee.badry.engineer`, `workers_dev: false`. DNS CNAME ke Worker. WAF: izinkan `160.79.104.0/21` jika Authorize Claude.ai terblokir.
+
+Deploy **tidak** menyalin Durable Object / cookie jar lokal. Operator harus Connect ulang di produksi. Jangan copy id KV/DO dari Worker lain.

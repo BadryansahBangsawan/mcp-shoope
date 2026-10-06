@@ -1,6 +1,6 @@
 import { sha256Hex } from "../session/crypto";
 import type { PendingAuthDraft, PendingAuthState, StoredCookie } from "../session/types";
-import { CookieJar } from "./cookie-jar";
+import { CookieJar, SESSION_COOKIE_NAMES } from "./cookie-jar";
 import {
   extractCsrfFromHtml,
   isCaptchaHint,
@@ -24,7 +24,6 @@ export const RESEND_OTP_URL = "https://shopee.co.id/api/v2/authentication/resend
 export const VCODE_LOGIN_URL = "https://shopee.co.id/api/v2/authentication/vcode_login";
 
 const FETCH_TIMEOUT_MS = 15_000;
-const SESSION_COOKIE_NAMES = ["SPC_EC", "SPC_ST"] as const;
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -140,7 +139,8 @@ export async function resendOtp(input: {
     username: input.pending.username,
     support_ivs: true,
   });
-  return resolveAuthResponse(jar, input.pending.username, res);
+  // Success without SPC_EC/SPC_ST still means "OTP resent" — keep pending, do not paste.
+  return resolveAuthResponse(jar, input.pending.username, res, "otp");
 }
 
 function csrfTokenFrom(jar: CookieJar, html?: string): string | undefined {
@@ -182,7 +182,12 @@ async function postAuthJson(
   return res;
 }
 
-async function resolveAuthResponse(jar: CookieJar, username: string, res: Response): Promise<LoginFlowResult> {
+async function resolveAuthResponse(
+  jar: CookieJar,
+  username: string,
+  res: Response,
+  noSession: "paste" | "otp" = "paste",
+): Promise<LoginFlowResult> {
   const text = await res.text();
   if (isCaptchaHint(res.status, null, "", text) || (res.status === 403 && looksLikeHtml(text))) {
     return { kind: "needs_paste", reason: "Shopee menolak login (captcha/anti-bot). Tempel cookie dari browser." };
@@ -205,13 +210,17 @@ async function resolveAuthResponse(jar: CookieJar, username: string, res: Respon
   if (isCaptchaHint(res.status, parsed.error, parsed.message, text)) {
     return { kind: "needs_paste", reason: parsed.message || "Captcha/anti-bot. Tempel cookie dari browser." };
   }
-  if (isOtpHint(parsed.error, parsed.message) || (!isSuccessError(parsed.error) && isOtpHint(parsed.error, text))) {
+  // Only error + message. Scanning the raw body matches keys like `"ivs"` on password failures.
+  if (isOtpHint(parsed.error, parsed.message)) {
     return needsOtp(jar, username, parsed.message || "Shopee meminta kode OTP.");
   }
   if (isSuccessError(parsed.error) && hasSessionCookies(jar)) {
     return connectedFrom(jar);
   }
   if (isSuccessError(parsed.error) && !hasSessionCookies(jar)) {
+    if (noSession === "otp") {
+      return needsOtp(jar, username, parsed.message || "OTP dikirim ulang. Masukkan kode.");
+    }
     return {
       kind: "needs_paste",
       reason: "Login tanpa cookie sesi (SPC_EC/SPC_ST). Tempel cookie dari browser.",

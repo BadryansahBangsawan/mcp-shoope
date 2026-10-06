@@ -47,7 +47,7 @@ function executeDescription(limits: CodemodeLimits): string {
     "Menjalankan fungsi panah async JavaScript di sandbox terisolasi di mana `codemode.request({ operationId, path, query, body })` memanggil satu operasi baca terdaftar dan menghasilkan { operationId, status, data }.",
     "Operasi tulis, fetch(), serta method/url/headers ditolak. Jangan dump PII.",
     `Per run: ${limits.maxRequests} request, ${limits.maxConcurrency} concurrent, ~${Math.round(limits.maxResponseChars / 1_000_000)} MB respons, ${Math.round(limits.timeoutMs / 1000)} dtk.`,
-    "Contoh: async () => (await codemode.spec()).catalog.map(o => o.operationId)",
+    'Contoh: async () => codemode.request({ operationId: "account.profile" })',
   ].join(" ");
 }
 

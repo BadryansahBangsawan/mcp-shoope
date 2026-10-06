@@ -210,6 +210,41 @@ describe("GET /connect + login/OTP", () => {
     expect(await otp?.text()).toMatch(/OTP|otp|kode/i);
   });
 
+  it("GET /connect shows the connected page when a session already exists", async () => {
+    const { ns, stub } = sessionsNs();
+    await stub.saveSession({
+      cookies: BUYER_COOKIES,
+      csrfToken: "csrf-token-value",
+      subject: "owner",
+      source: "paste",
+      userId: "123456789",
+    });
+    const res = await handleConnectRoutes(req("/connect"), env(ns));
+    expect(res?.status).toBe(200);
+    const html = await res?.text();
+    expect(html).toMatch(/Akun Shopee terhubung/);
+    expect(html).toMatch(/paste/);
+    expect(html).not.toMatch(/name="username"/);
+  });
+
+  it("GET /connect prefers pending OTP over an existing session", async () => {
+    const { ns, stub } = sessionsNs();
+    await stub.saveSession({
+      cookies: BUYER_COOKIES,
+      csrfToken: "csrf-token-value",
+      subject: "owner",
+      source: "login",
+    });
+    await stub.savePending({
+      step: "otp",
+      username: "buyer@example.com",
+      cookies: [cookie("csrftoken", "csrf-token-value")],
+      csrfToken: "csrf-token-value",
+    });
+    const otp = await handleConnectRoutes(req("/connect"), env(ns));
+    expect(await otp?.text()).toMatch(/OTP|otp|kode/i);
+  });
+
   it("POST /connect/login saves a connected session without returning cookies", async () => {
     vi.mocked(runShopeeLoginFlow).mockResolvedValue({
       kind: "connected",
@@ -276,6 +311,56 @@ describe("GET /connect + login/OTP", () => {
     );
     expect(await res?.json()).toEqual({ needs_paste: true, reason: "captcha" });
     expect(stub.saveSession).not.toHaveBeenCalled();
+  });
+
+  it("invalid OTP HTML stays on the OTP form and keeps pending", async () => {
+    const { ns, stub } = sessionsNs();
+    await stub.savePending({
+      step: "otp",
+      username: "buyer@example.com",
+      cookies: [cookie("csrftoken", "csrf-token-value")],
+      csrfToken: "csrf-token-value",
+    });
+    const res = await handleConnectRoutes(
+      req("/connect/otp", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ vcode: "12" }).toString(),
+      }),
+      env(ns),
+    );
+    expect(res?.status).toBe(400);
+    const html = await res?.text();
+    expect(html).toMatch(/OTP|otp|kode/i);
+    expect(html).toMatch(/vcode/);
+    expect(html).not.toMatch(/name="password"/);
+    expect(await stub.getPending()).toMatchObject({ username: "buyer@example.com" });
+    expect(continueWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("OTP 429 HTML stays on the OTP form", async () => {
+    const { ns, stub } = sessionsNs();
+    await stub.savePending({
+      step: "otp",
+      username: "buyer@example.com",
+      cookies: [cookie("csrftoken", "csrf-token-value")],
+      csrfToken: "csrf-token-value",
+    });
+    vi.mocked(stub.checkRateLimit).mockResolvedValue({ ok: false, remaining: 0, retryAfterMs: 60_000 });
+    const res = await handleConnectRoutes(
+      req("/connect/otp", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ vcode: "123456" }).toString(),
+      }),
+      env(ns),
+    );
+    expect(res?.status).toBe(429);
+    const html = await res?.text();
+    expect(html).toMatch(/OTP|otp|kode/i);
+    expect(html).not.toMatch(/name="password"/);
+    expect(await stub.getPending()).toMatchObject({ username: "buyer@example.com" });
+    expect(continueWithOtp).not.toHaveBeenCalled();
   });
 
   it("OTP 429 does not consume pending", async () => {

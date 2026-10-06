@@ -2,7 +2,7 @@ import { brandRow, esc, layout } from "../web/html";
 import { SCOPES } from "./scopes";
 
 const SCOPE_LABELS: Record<string, string> = {
-  [SCOPES.READ]: "Baca info toko, pesanan, dan katalog produk toko yang sudah diotorisasi",
+  [SCOPES.READ]: "Baca data akun buyer yang terhubung (profil, pesanan, keranjang, voucher)",
   [SCOPES.WRITE]: "Minta perubahan yang tetap butuh persetujuan owner per operasi",
   [SCOPES.ADMIN]: "Akses administratif, termasuk baca dan tulis",
 };
@@ -21,7 +21,7 @@ export function ownerLoginPage(opts: { csrf: string; next: string; error?: strin
   </header>
   <div class="panel panel-neutral">
     <strong>Akses server privat</strong>
-    <span>Hanya owner yang dapat mengotorisasi klien dan menghubungkan toko Shopee.</span>
+    <span>Hanya owner yang dapat mengotorisasi klien dan menghubungkan akun buyer Shopee.</span>
   </div>
   ${err}
   <form method="POST" action="/login" autocomplete="off" class="form-stack">
@@ -39,7 +39,7 @@ export function ownerLoginPage(opts: { csrf: string; next: string; error?: strin
       <button type="submit" class="btn btn-primary">Masuk dengan aman</button>
     </div>
   </form>
-  <p class="privacy-note">Password hanya dipakai untuk memverifikasi akses owner. Bukan password Seller Centre.</p>
+  <p class="privacy-note">Password hanya dipakai untuk memverifikasi akses owner. Bukan password akun Shopee.</p>
 </section>`,
   );
 }
@@ -94,7 +94,7 @@ export function consentPage(o: ConsentPageOptions): string {
   ${brandRow()}
   <header class="card-header">
     <h1 id="authorization-title">Otorisasi klien MCP</h1>
-    <p class="subtitle">${esc(o.clientName)} meminta akses ke toko Shopee yang terhubung di server ini.</p>
+    <p class="subtitle">${esc(o.clientName)} meminta akses ke akun buyer Shopee yang terhubung di server ini.</p>
   </header>
   <div class="panel panel-neutral">
     <div class="panel-heading">
@@ -149,7 +149,7 @@ export function simpleErrorPage(title: string, message: string): string {
       <span>${esc(message)}</span>
     </div>
   </div>
-  <p class="privacy-note">Tidak ada data toko Shopee yang dibagikan.</p>
+  <p class="privacy-note">Tidak ada data akun Shopee yang dibagikan.</p>
 </section>`,
   );
 }

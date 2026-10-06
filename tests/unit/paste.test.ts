@@ -83,6 +83,34 @@ describe("validatePasteBundle", () => {
     expect(out.userId).toBeUndefined();
   });
 
+  it("rejects buyer cookies without SPC_EC or SPC_ST", () => {
+    expect(
+      invalid(
+        bundle({
+          cookies: [{ name: "csrftoken", value: "csrf-token-value", domain: "shopee.co.id", path: "/" }],
+        }),
+      ).message,
+    ).toMatch(/SPC_EC or SPC_ST/);
+  });
+
+  it("accepts SPC_ST as the session cookie", () => {
+    const out = validatePasteBundle(
+      bundle({
+        cookies: [{ name: "SPC_ST", value: "st-value", domain: "shopee.co.id", path: "/" }],
+      }),
+    );
+    expect(out.cookies[0]).toMatchObject({ name: "SPC_ST", value: "st-value" });
+  });
+
+  it("rewrites www.shopee.co.id host-only cookies to the apex so they are sent to shopee.co.id", () => {
+    const out = validatePasteBundle(
+      bundle({
+        cookies: [{ name: "SPC_EC", value: "ec", domain: "www.shopee.co.id", path: "/" }],
+      }),
+    );
+    expect(out.cookies[0]).toMatchObject({ name: "SPC_EC", domain: "shopee.co.id", hostOnly: false });
+  });
+
   it("rejects wrong version/source, empty remaining cookies, and invalid cookie objects", () => {
     expect(invalid(null).message).toMatch(/JSON object/);
     expect(invalid([]).message).toMatch(/JSON object/);

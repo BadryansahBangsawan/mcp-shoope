@@ -4,7 +4,7 @@ import { createMcpHandler } from "agents/mcp/server";
 import { approvalsStubFor, MutationApprovalsDO } from "./approvals/mutation-approvals";
 import { handleApprovalRoutes } from "./approvals/routes";
 import { handleAuthorize, handleLogin, handleLogout } from "./auth/owner-routes";
-import { SCOPES } from "./auth/scopes";
+import { SCOPES, scopesForAccessToken } from "./auth/scopes";
 import { principalFromProps, resolveDevPsk } from "./auth/verify";
 import { createSessionProvider, handleConnectRoutes } from "./connect/routes";
 import { BUNDLED_DOCS } from "./docs/bundled";
@@ -132,9 +132,12 @@ function providerFor(env: Env): OAuthProvider<Env> {
       bearer_methods_supported: ["header"],
       resource_name: "Shopee MCP",
     },
-    tokenExchangeCallback: ({ props, requestedScope }) => ({
-      accessTokenProps: { ...(props as object), scopes: requestedScope },
-    }),
+    tokenExchangeCallback: ({ props, requestedScope }) => {
+      const p = (props ?? {}) as Record<string, unknown>;
+      return {
+        accessTokenProps: { ...p, scopes: scopesForAccessToken(p.scopes, requestedScope) },
+      };
+    },
     resolveExternalToken: async ({ token, request, env: e }) => {
       const props = await resolveDevPsk(token, request, e);
       return props ? { props, audience: resource } : null;

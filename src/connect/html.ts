@@ -149,7 +149,7 @@ export function connectSuccessHtml(opts: {
   ${brandRow("Sesi tersimpan")}
   <header class="card-header">
     <h1 id="success-title">Akun Shopee terhubung</h1>
-    <p class="subtitle">MCP dapat membaca data akun buyer ini setelah operasi read ter-capture.</p>
+    <p class="subtitle">MCP dapat membaca data akun buyer ini (profil, pesanan, keranjang, voucher).</p>
   </header>
   <div class="panel panel-success">
     <span class="status-icon" aria-hidden="true">✓</span>

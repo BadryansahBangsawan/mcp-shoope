@@ -239,6 +239,8 @@ async function main() {
   const health = await fetch(`${BASE}/healthz`);
   check("GET /healthz", health.ok);
 
+  const getMcp = await fetch(`${BASE}/mcp`);
+  check("GET /mcp without bearer is 401 (browser HTTP ERROR 401 is expected)", getMcp.status === 401);
   const anon = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   check("unauthenticated /mcp → 401 + resource_metadata",
     anon.status === 401 && (anon.headers.get("www-authenticate") ?? "").includes("resource_metadata="));
@@ -274,11 +276,39 @@ async function main() {
   const prompts = (await client.listPrompts()).prompts.map((p) => p.name).sort();
   check("prompts/list", JSON.stringify(prompts) === '["detail-pesanan","ringkas-akun","riwayat-beli"]', prompts.join(","));
 
+  const EXPECTED_OPS = [
+    "account.profile",
+    "address.list",
+    "cart.get",
+    "notifications.activities",
+    "notifications.list",
+    "orders.count",
+    "orders.detail",
+    "orders.list",
+    "voucher.list",
+    "voucher.meta",
+    "wallet.overview",
+    "wallet.transactions",
+  ];
   const search = await client.callTool({
     name: "search",
     arguments: { code: "async () => { const { catalog } = await codemode.spec(); return catalog.map(o => o.operationId); }" },
   });
-  check("tools/call search (empty catalog until HAR)", !search.isError && toolText(search).trim() === "[]", toolText(search).slice(0, 120));
+  const catalogText = toolText(search).trim();
+  let parsedCatalog: unknown;
+  try {
+    parsedCatalog = JSON.parse(catalogText);
+  } catch {
+    parsedCatalog = null;
+  }
+  const catalogIds = Array.isArray(parsedCatalog)
+    ? parsedCatalog.filter((x): x is string => typeof x === "string")
+    : [];
+  const catalogOk =
+    !search.isError &&
+    catalogIds.length === EXPECTED_OPS.length &&
+    EXPECTED_OPS.every((id) => catalogIds.includes(id));
+  check("tools/call search (12 observed reads)", catalogOk, catalogText.slice(0, 200));
 
   const escape = await client.callTool({
     name: "execute",
@@ -308,16 +338,23 @@ async function main() {
       },
     });
     const liveText = toolText(live);
-    check("live catalog empty until HAR (or first observed read)",
-      !live.isError && (liveText.includes('"catalog":[]') || liveText.includes('"status":200')),
-      liveText.slice(0, 240));
-    const unregistered = await client.callTool({
+    const liveOk =
+      (!live.isError && liveText.includes('"status":200')) ||
+      (live.isError === true && /SHOPEE_AUTH_EXPIRED/i.test(liveText));
+    check("live first catalog read is 200 or SHOPEE_AUTH_EXPIRED", liveOk, liveText.slice(0, 240));
+    const profile = await client.callTool({
       name: "execute",
       arguments: { code: "async () => codemode.request({ operationId: 'account.profile' })" },
     });
-    check("unregistered reads are UNSUPPORTED until HAR", unregistered.isError === true, toolText(unregistered).slice(0, 160));
-    check("live read does not return HTML login", !/buyer\/login|sign[\s-]?in/i.test(liveText));
-    check("live read does not leak cookies", !/SPC_EC|csrftoken|access_token|refresh_token|partner_key/i.test(liveText));
+    const profileText = toolText(profile);
+    check(
+      "account.profile is a registered read (200 or SHOPEE_AUTH_EXPIRED)",
+      (!profile.isError && /"status"\s*:\s*200/.test(profileText)) ||
+        (profile.isError === true && /SHOPEE_AUTH_EXPIRED/i.test(profileText)),
+      profileText.slice(0, 160),
+    );
+    check("live read does not return HTML login", !/buyer\/login|sign[\s-]?in/i.test(liveText + profileText));
+    check("live read does not leak cookies", !/SPC_EC|csrftoken|access_token|refresh_token|partner_key/i.test(liveText + profileText));
   }
   await client.close();
 

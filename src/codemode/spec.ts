@@ -20,6 +20,9 @@ export function createSpecBundle(): CodemodeSpecBundle {
   const spec = await codemode.spec();
   return { count: spec.catalog.length, ids: spec.catalog.map(o => o.operationId) };
 }`,
+      `async () => {
+  return await codemode.request({ operationId: "account.profile" });
+}`,
     ],
   };
 }

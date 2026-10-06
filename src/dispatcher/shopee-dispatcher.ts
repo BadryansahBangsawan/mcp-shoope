@@ -137,12 +137,8 @@ export class ShopeeDispatcher {
     if (status === 401) return "auth";
     if (status === 429) return "rate";
     if (status === 403) {
+      // Login-HTML is an expired session. JSON (even error_auth) is FORBIDDEN; keep the jar.
       if (looksLikeLoginHtml(text)) return "auth";
-      const parsed = tryParseJson(text);
-      if (parsed !== undefined) {
-        const env = parseLoginJson(parsed);
-        if (isAuthError(String(env.error ?? ""), env.message)) return "auth";
-      }
       return "forbidden";
     }
     void op;
@@ -326,10 +322,3 @@ function isAuthError(code: string, message = ""): boolean {
   );
 }
 
-function tryParseJson(text: string): unknown {
-  try {
-    return text ? JSON.parse(text) : null;
-  } catch {
-    return undefined;
-  }
-}
