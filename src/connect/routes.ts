@@ -44,8 +44,7 @@ export interface ConnectEnv extends ConnectGateEnv {
 
 const LOGIN_WINDOW_MS = 15 * 60_000;
 
-const HOP_GONE =
-  "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung. Jalankan bun run auth lalu scan QR di aplikasi Shopee.";
+const HOP_GONE = "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung.";
 
 const HOP_PATHS = new Set(["/connect/authorize", "/connect/callback", "/connect/sso", "/connect/picker"]);
 

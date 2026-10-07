@@ -22,9 +22,7 @@ bun run dev
 curl http://localhost:8787/healthz
 ```
 
-Connect: `bunx playwright install chromium` lalu `bun run auth` (Chrome for Testing membuka QR Shopee; scan di aplikasi). Skrip mengirim sesi ke `https://mcp.shopee.badry.engineer` (override `SHOPEE_MCP_BASE`). Halaman `/connect` tidak menampilkan form akun Shopee dan tidak menampilkan tempel cookie.
-
-Sidecar hanya mengirim domain `shopee.co.id` / `*.shopee.co.id`. Wajib `SPC_EC` atau `SPC_ST` yang domain-match apex. Cookie `www.shopee.co.id` di-rewrite ke `shopee.co.id` (`hostOnly: false`). Pihak ketiga / seller / partner di-drop.
+Connect: buka `/login` lalu `/connect`. Masuk dengan akun Shopee (HP/email + password). Cookie sesi disimpan di Durable Object. OTP jika diminta.
 
 Buka `/mcp` di browser tanpa Bearer = **401** (RFC 6750). Cek hidup lewat `/healthz`.
 

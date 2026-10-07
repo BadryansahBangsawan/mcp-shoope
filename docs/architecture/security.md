@@ -10,23 +10,23 @@
 
 ## Unofficial XHR
 
-Login Shopee dijalankan di mesin operator (`bun run auth`, Chrome for Testing, scan QR di aplikasi). Worker menerima sesi lewat sidecar (`POST /connect/paste`); halaman Connect tidak menampilkan form akun Shopee dan tidak menampilkan tempel cookie. Ini XHR tidak resmi — melanggar ToS Shopee (bot/emulator). Bukan mass scrape, bukan checkout, bukan akun orang lain. Rate limit Connect: 10/IP, 6/user, 20 global / 15 menit (kunci di-hash).
+Login Shopee di form `/connect`. Worker POST ke hop ter-capture; cookie jar terenkripsi di Durable Object. Password dan OTP hanya di request, tidak disimpan. Ini XHR tidak resmi — melanggar ToS Shopee (bot/emulator). Bukan mass scrape, bukan checkout, bukan akun orang lain. Rate limit Connect: 10/IP, 6/user, 20 global / 15 menit (kunci di-hash).
 
 ## Anti-bot / IP Worker
 
-Shopee sering menolak klien non-browser (`af-ac-enc-*`, captcha, bind IP/UA). Fetch dari IP Cloudflare bisa 403 meski cookie valid. Login Worker bisa gagal; paste dari browser rumah bisa tetap 403 saat di-replay.
+Shopee sering menolak klien non-browser (`af-ac-enc-*`, captcha, bind IP/UA). Fetch dari IP Cloudflare bisa 403 meski cookie valid. Login Worker bisa gagal.
 
-Fail-closed: `needs_paste` / `SHOPEE_AUTH_EXPIRED` / `UPSTREAM_ERROR`. Owner reconnect. **Jangan** generate header anti-bot yang tidak ter-capture. **Jangan** simpan password/OTP.
+Fail-closed: `SHOPEE_AUTH_EXPIRED` / `UPSTREAM_ERROR`. Owner reconnect. **Jangan** generate header anti-bot yang tidak ter-capture. **Jangan** simpan password/OTP.
 
 403 JSON (bukan HTML login) = `FORBIDDEN`, sesi tetap. 403 HTML login = expire. 429 = `SHOPEE_RATE_LIMITED`, sesi tetap.
 
 ## Yang tidak dilindungi / residual
 
-- Cookie sesi setara akses akun. Siapa pun dengan paste cookie + owner cookie bisa membaca data akun itu.
+- Cookie sesi setara akses akun. Siapa pun dengan sesi Durable Object + owner cookie bisa membaca data akun itu.
 - Envelope Shopee sering HTTP 200 + `error`. Mapping salah bisa menahan sesi atau sebaliknya menghapusnya.
 - PII (nama, alamat, telepon, isi chat) ada di XHR akun. Tool tidak menyensor field; prompt dan redaksi docs yang menahan dump. Jangan log body pesanan/cookie.
 - Mutasi module ada di repo dengan flag mati. Jangan nyalakan tanpa capture write + approval UI + tes.
-- Login hop v1 `documented-not-executed` sampai HAR. Drift upstream mungkin gagal login → paste.
+- Login hop v1 `documented-not-executed` sampai HAR. Drift upstream mungkin gagal login.
 
 ## Logging
 

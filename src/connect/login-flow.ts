@@ -76,19 +76,19 @@ export async function runShopeeLoginFlow(input: LoginFlowInput): Promise<LoginFl
   if (pageRes.status >= 300 || pageRes.status === 403) {
     return {
       kind: "needs_paste",
-      reason: `Halaman login Shopee menjawab ${pageRes.status}. Tempel cookie dari browser rumah.`,
+      reason: `Login gagal (${pageRes.status}).`,
     };
   }
   if (pageRes.status !== 200) {
-    return { kind: "error", message: `Halaman login Shopee menjawab ${pageRes.status}`, status: pageRes.status };
+    return { kind: "error", message: `Login gagal (${pageRes.status}).`, status: pageRes.status };
   }
   if (isCaptchaHint(pageRes.status, null, "", pageBody)) {
-    return { kind: "needs_paste", reason: "Shopee menampilkan captcha/anti-bot. Tempel cookie dari browser." };
+    return { kind: "needs_paste", reason: "Login gagal." };
   }
 
   const csrf = csrfTokenFrom(jar, pageBody);
   if (!csrf) {
-    return { kind: "needs_paste", reason: "CSRF tidak terbaca dari halaman login. Tempel cookie dari browser." };
+    return { kind: "needs_paste", reason: "Login gagal." };
   }
 
   const passwordHash = await sha256Hex(input.password);
@@ -111,7 +111,7 @@ export async function continueWithOtp(input: {
   const jar = CookieJar.fromJSON(input.pending.cookies);
   const csrf = input.pending.csrfToken ?? csrfTokenFrom(jar);
   if (!csrf) {
-    return { kind: "needs_paste", reason: "CSRF OTP hilang. Masuk ulang atau tempel cookie." };
+    return { kind: "needs_paste", reason: "Login gagal. Masuk ulang." };
   }
   const res = await postAuthJson(fetchImpl, jar, csrf, VCODE_LOGIN_URL, {
     username: input.pending.username,
@@ -133,7 +133,7 @@ export async function resendOtp(input: {
   const jar = CookieJar.fromJSON(input.pending.cookies);
   const csrf = input.pending.csrfToken ?? csrfTokenFrom(jar);
   if (!csrf) {
-    return { kind: "needs_paste", reason: "CSRF resend hilang. Masuk ulang atau tempel cookie." };
+    return { kind: "needs_paste", reason: "Login gagal. Masuk ulang." };
   }
   const res = await postAuthJson(fetchImpl, jar, csrf, RESEND_OTP_URL, {
     username: input.pending.username,
@@ -190,7 +190,7 @@ async function resolveAuthResponse(
 ): Promise<LoginFlowResult> {
   const text = await res.text();
   if (isCaptchaHint(res.status, null, "", text) || (res.status === 403 && looksLikeHtml(text))) {
-    return { kind: "needs_paste", reason: "Shopee menolak login (captcha/anti-bot). Tempel cookie dari browser." };
+    return { kind: "needs_paste", reason: "Login gagal." };
   }
   if (res.status === 429) {
     return { kind: "error", message: "Shopee membatasi percobaan masuk. Coba lagi nanti.", status: 429 };
@@ -201,14 +201,14 @@ async function resolveAuthResponse(
     json = text ? JSON.parse(text) : null;
   } catch {
     if (looksLikeHtml(text)) {
-      return { kind: "needs_paste", reason: "Login mengembalikan HTML, bukan JSON. Tempel cookie dari browser." };
+      return { kind: "needs_paste", reason: "Login gagal." };
     }
-    return { kind: "error", message: "Login mengembalikan non-JSON", status: res.status };
+    return { kind: "error", message: "Login gagal.", status: res.status };
   }
 
   const parsed = parseLoginJson(json);
   if (isCaptchaHint(res.status, parsed.error, parsed.message, text)) {
-    return { kind: "needs_paste", reason: parsed.message || "Captcha/anti-bot. Tempel cookie dari browser." };
+    return { kind: "needs_paste", reason: parsed.message || "Login gagal." };
   }
   // Only error + message. Scanning the raw body matches keys like `"ivs"` on password failures.
   if (isOtpHint(parsed.error, parsed.message)) {
@@ -223,7 +223,7 @@ async function resolveAuthResponse(
     }
     return {
       kind: "needs_paste",
-      reason: "Login tanpa cookie sesi (SPC_EC/SPC_ST). Tempel cookie dari browser.",
+      reason: "Login gagal.",
     };
   }
   return {

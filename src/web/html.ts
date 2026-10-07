@@ -9,12 +9,15 @@ export function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export function brandRow(status = "Secure connection"): string {
+/** Shopee bag + wordmark. Status labels are unused — callers may still pass one. */
+export function brandRow(_status?: string): string {
   return `<div class="brand-row">
-  <span class="brand-mark" aria-hidden="true">S</span>
+  <svg class="brand-logo" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#ee4d2d" d="M15.5 14.8V13.2c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5v1.6h4.8c1.7 0 3.1 1.4 3.1 3.1v21.1c0 2.5-2 4.5-4.5 4.5H12.1c-2.5 0-4.5-2-4.5-4.5V17.9c0-1.7 1.4-3.1 3.1-3.1h4.8zm4.4 0h8.2V13.2c0-2.3-1.8-4.1-4.1-4.1s-4.1 1.8-4.1 4.1v1.6z"/>
+    <circle cx="24" cy="29.2" r="7" fill="none" stroke="#fff" stroke-width="3.2"/>
+    <path fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" d="M20.4 31.6c.9 1.5 2.5 2.5 4.3 2.5 2.8 0 5.1-2.3 5.1-5.1"/>
+  </svg>
   <span class="brand">Shopee</span>
-  <span class="secure-icon" aria-hidden="true"></span>
-  <span class="secure-label">${esc(status)}</span>
 </div>`;
 }
 
@@ -73,59 +76,27 @@ export function layout(title: string, body: string, suffix = "shopee-mcp"): stri
       border-radius: 14px;
     }
     .card.card-compact, .connect-card { width: min(100%, 520px); }
+    .card.card-login { width: min(100%, 400px); gap: 16px; }
+    .card-login h1 { font-size: 22px; letter-spacing: -.02em; }
     .brand-row {
       min-width: 0;
-      min-height: 36px;
       display: flex;
       align-items: center;
-      gap: 9px;
+      justify-content: center;
+      gap: 8px;
     }
-    .brand-mark {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 34px;
-      display: inline-grid;
-      place-items: center;
-      border-radius: 8px;
-      background: #ee4d2d;
-      color: #fff;
-      font-size: 18px;
-      font-weight: 750;
-      line-height: 1;
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
+      display: block;
     }
     .brand {
-      color: #18302a;
-      font-size: 17px;
-      font-weight: 750;
-      letter-spacing: -.01em;
-    }
-    .secure-icon {
-      position: relative;
-      width: 14px;
-      height: 16px;
-      margin-left: 1px;
-      flex: 0 0 14px;
-      border: 1.5px solid currentColor;
-      border-radius: 7px 7px 8px 8px;
       color: #ee4d2d;
-    }
-    .secure-icon::after {
-      content: "";
-      position: absolute;
-      left: 3px;
-      top: 3px;
-      width: 5px;
-      height: 3px;
-      border-left: 1.5px solid currentColor;
-      border-bottom: 1.5px solid currentColor;
-      transform: rotate(-45deg);
-    }
-    .secure-label {
-      min-width: 0;
-      color: #ee4d2d;
-      font-size: 11px;
-      font-weight: 650;
-      line-height: 1.25;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -.04em;
+      line-height: 1;
     }
     .card-header { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
     h1 {
@@ -333,6 +304,7 @@ export function layout(title: string, body: string, suffix = "shopee-mcp"): stri
       color: #b42318;
     }
     .btn-danger:hover { background: #fde7e7; }
+    .btn-block { width: 100%; min-height: 44px; font-size: 15px; }
     button.choice {
       width: 100%;
       justify-content: flex-start;

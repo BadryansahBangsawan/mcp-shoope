@@ -20,8 +20,7 @@ vi.mock("../../src/connect/login-flow", async (importOriginal) => {
 const PSK = "dev-psk-16-chars-min";
 const ORIGIN = "http://localhost:8787";
 const HOP_PATHS = ["/connect/authorize", "/connect/callback", "/connect/sso", "/connect/picker"] as const;
-const GONE =
-  "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung. Jalankan bun run auth lalu scan QR di aplikasi Shopee.";
+const GONE = "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung.";
 
 function cookie(name: string, value: string): StoredCookie {
   return { name, value, domain: "shopee.co.id", hostOnly: true, path: "/" };
@@ -194,17 +193,18 @@ describe("connect hops + owner gate", () => {
 });
 
 describe("GET /connect + login/OTP", () => {
-  it("GET /connect shows QR + bun run auth, without cookie paste or Worker password fields, or OTP when pending", async () => {
+  it("GET /connect shows Shopee login fields, without cookie paste, or OTP when pending", async () => {
     const { ns, stub } = sessionsNs();
     const login = await handleConnectRoutes(req("/connect"), env(ns));
     expect(login?.status).toBe(200);
     const html = await login?.text();
-    expect(html).toMatch(/bun run auth/);
-    expect(html).toMatch(/Scan QR/i);
-    expect(html).not.toMatch(/name="password"/);
-    expect(html).not.toMatch(/name="username"/);
+    expect(html).toMatch(/name="username"/);
+    expect(html).toMatch(/name="password"/);
+    expect(html).toMatch(/action="\/connect\/login"/);
+    expect(html).not.toMatch(/bun run auth/);
     expect(html).not.toMatch(/name="tokens"/);
     expect(html).not.toMatch(/<textarea/i);
+    expect(html).not.toMatch(/Koneksi aman|Akses owner aman|Akses server privat/);
 
     await stub.savePending({
       step: "otp",
@@ -228,9 +228,11 @@ describe("GET /connect + login/OTP", () => {
     const res = await handleConnectRoutes(req("/connect"), env(ns));
     expect(res?.status).toBe(200);
     const html = await res?.text();
-    expect(html).toMatch(/Akun Shopee terhubung/);
-    expect(html).toMatch(/paste/);
+    expect(html).toMatch(/Terhubung/);
+    expect(html).toMatch(/connect\/disconnect/);
     expect(html).not.toMatch(/name="username"/);
+    expect(html).not.toMatch(/bun run auth/);
+    expect(html).toMatch(/class="brand">Shopee/);
   });
 
   it("GET /connect prefers pending OTP over an existing session", async () => {

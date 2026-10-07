@@ -8,7 +8,7 @@ Password dan OTP hidup hanya di request Connect. Pending OTP di Durable Object *
 
 `GET https://shopee.co.id/buyer/login`
 
-Halaman form buyer (tab HP / email). Cookie `csrftoken` (jika ada) diinjeksikan sebagai header `x-csrftoken`. Status 403 / 3xx → Connect menampilkan paste.
+Halaman form buyer (tab HP / email). Cookie `csrftoken` (jika ada) diinjeksikan sebagai header `x-csrftoken`. Status 403 / 3xx → login gagal (fail-closed).
 
 ## Submit password
 
@@ -16,7 +16,7 @@ Halaman form buyer (tab HP / email). Cookie `csrftoken` (jika ada) diinjeksikan 
 
 Body JSON (kunci): `username`, `password` (SHA-256 hex dari password yang diketik), `support_ivs`. Password tidak disimpan. Cookie sesi yang diharapkan: `SPC_EC` / `SPC_ST` (dan `SPC_U` untuk prefix status).
 
-Sukses: envelope tanpa error **dan** cookie `SPC_EC` atau `SPC_ST`. Petunjuk OTP (`otp` / `vcode` / `ivs`) → form OTP. Captcha / anti-bot → paste.
+Sukses: envelope tanpa error **dan** cookie `SPC_EC` atau `SPC_ST`. Cookie jar disimpan di Durable Object. Petunjuk OTP (`otp` / `vcode` / `ivs`) → form OTP. Captcha / anti-bot → login gagal.
 
 ## Kirim ulang OTP
 
@@ -34,6 +34,6 @@ Body JSON (kunci): `username`, `vcode`, `support_ivs`. OTP 4–8 alfanumerik. Pe
 
 SSO Google / Facebook / Apple = 410. Otorisasi Open Platform (`auth_partner`, token shop) = 410.
 
-QR login **bukan hop Worker**. Sidecar `bun run auth` membuka halaman QR resmi Shopee (tautan “Log in dengan QR” di `/buyer/login`). Operator scan di aplikasi (Scan QR/Barcode → Konfirmasi Log in). Worker tidak menampilkan QR dan tidak mem-poll status QR. Jangan invent hop QR (`gen_qrcode`, `qrcode_login_status`, dll.).
+QR login **bukan hop Worker**. Operator masuk di `GET /connect` (HP/email + password). Worker menjalankan hop di bawah ini; cookie sesi disimpan. Jangan invent hop QR (`gen_qrcode`, `qrcode_login_status`, dll.).
 
 Jangan invent hop login tambahan.

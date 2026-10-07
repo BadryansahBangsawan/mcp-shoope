@@ -175,9 +175,7 @@ export async function respondLoginResult(opts: {
       connectOtpPage({
         csrfToken,
         pending,
-        statusHtml: result.message
-          ? `<div class="panel panel-neutral inline-note"><span>${escText(result.message)}</span></div>`
-          : undefined,
+        statusHtml: result.message ? `<p class="ok" role="status">${escText(result.message)}</p>` : undefined,
       }),
     );
   }
@@ -265,10 +263,7 @@ export function connectStepErrorHtml(
   message: string,
   pending?: PendingAuthState | null,
 ): string {
-  const statusHtml = `<div class="panel panel-danger err" role="alert">
-  <span class="status-icon" aria-hidden="true">!</span>
-  <div><strong>Gagal</strong><br/><span>${escText(message)}</span></div>
-</div>`;
+  const statusHtml = `<p class="err" role="alert">${escText(message)}</p>`;
   if (pending) return connectOtpPage({ csrfToken, pending, statusHtml });
   return connectErrorHtml({ csrfToken, message });
 }
