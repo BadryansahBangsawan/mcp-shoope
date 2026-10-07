@@ -21,7 +21,7 @@ const PSK = "dev-psk-16-chars-min";
 const ORIGIN = "http://localhost:8787";
 const HOP_PATHS = ["/connect/authorize", "/connect/callback", "/connect/sso", "/connect/picker"] as const;
 const GONE =
-  "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung. Masuk dengan HP/email di /connect.";
+  "SSO Google/Facebook/Apple dan otorisasi Open Platform tidak didukung. Jalankan bun run auth lalu scan QR di aplikasi Shopee.";
 
 function cookie(name: string, value: string): StoredCookie {
   return { name, value, domain: "shopee.co.id", hostOnly: true, path: "/" };
@@ -194,11 +194,17 @@ describe("connect hops + owner gate", () => {
 });
 
 describe("GET /connect + login/OTP", () => {
-  it("GET /connect shows the login form, or the OTP form when pending", async () => {
+  it("GET /connect shows QR + bun run auth, without cookie paste or Worker password fields, or OTP when pending", async () => {
     const { ns, stub } = sessionsNs();
     const login = await handleConnectRoutes(req("/connect"), env(ns));
     expect(login?.status).toBe(200);
-    expect(await login?.text()).toMatch(/password/i);
+    const html = await login?.text();
+    expect(html).toMatch(/bun run auth/);
+    expect(html).toMatch(/Scan QR/i);
+    expect(html).not.toMatch(/name="password"/);
+    expect(html).not.toMatch(/name="username"/);
+    expect(html).not.toMatch(/name="tokens"/);
+    expect(html).not.toMatch(/<textarea/i);
 
     await stub.savePending({
       step: "otp",

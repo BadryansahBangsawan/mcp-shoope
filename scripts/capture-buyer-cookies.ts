@@ -1,23 +1,28 @@
 /**
- * Open a dedicated Brave window on shopee.co.id, wait for the operator to
- * log in, then POST the buyer cookies to local /connect/paste.
- *
- *   bun run scripts/capture-buyer-cookies.ts
- *
+ * Brave CDP fallback. Prefer `bun run auth` (Chrome for Testing).
  * Never prints cookie values. Profile lives in .runtime/chrome-shopee (gitignored).
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { pasteToWorker } from "./paste-to-worker";
+import {
+  LOGIN_URL,
+  cookieNamesLine,
+  hasSessionCookie,
+  runtimePaths,
+  toPasteBundle,
+  workerBase,
+  writeAtomic,
+} from "./runtime";
 
 const BRAVE = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
 const DEBUG_PORT = 9333;
-const LOGIN_URL = "https://shopee.co.id/buyer/login";
-const WORKER = process.env.SHOPEE_MCP_BASE?.replace(/\/$/, "") || "http://127.0.0.1:8787";
+const WORKER = workerBase();
 const PROFILE = resolve(process.cwd(), ".runtime/chrome-shopee");
-const BUNDLE_PATH = resolve(process.cwd(), ".runtime/auth/paste-tokens.json");
+const BUNDLE_PATH = runtimePaths().pastePath;
 const WAIT_MS = 15 * 60_000;
-const SESSION_NAMES = new Set(["SPC_EC", "SPC_ST"]);
 
 type CdpCookie = {
   name: string;
@@ -27,23 +32,6 @@ type CdpCookie = {
   expires?: number;
   session?: boolean;
 };
-
-function loadDevVars(): Record<string, string> {
-  const path = resolve(process.cwd(), ".dev.vars");
-  if (!existsSync(path)) throw new Error(".dev.vars missing — run setup first");
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const i = line.indexOf("=");
-    if (i > 0 && !line.trim().startsWith("#")) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-  }
-  return out;
-}
-
-function isBuyerDomain(domain: string): boolean {
-  const host = domain.replace(/^\./, "").toLowerCase();
-  if (host.includes("seller") || host.includes("partner")) return false;
-  return host === "shopee.co.id" || host.endsWith(".shopee.co.id");
-}
 
 async function debugUp(): Promise<boolean> {
   try {
@@ -80,7 +68,7 @@ async function launchBrave(): Promise<void> {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
     if (await debugUp()) {
-      console.log("Brave opened on shopee.co.id/buyer/login — log in there");
+      console.log("Brave opened on Shopee QR login — scan in the Shopee app");
       return;
     }
     await new Promise((r) => setTimeout(r, 300));
@@ -162,90 +150,7 @@ async function readCookies(): Promise<CdpCookie[]> {
   });
 }
 
-function toBundle(cookies: CdpCookie[]) {
-  const kept = cookies.filter((c) => isBuyerDomain(c.domain) && c.name && typeof c.value === "string");
-  return {
-    v: 1 as const,
-    source: "browser-export" as const,
-    cookies: kept.map((c) => {
-      const row: { name: string; value: string; domain: string; path: string; expires?: number } = {
-        name: c.name,
-        value: c.value,
-        domain: c.domain,
-        path: c.path && c.path.startsWith("/") ? c.path : "/",
-      };
-      if (typeof c.expires === "number" && c.expires > 0 && c.expires < 1e12) row.expires = c.expires;
-      else if (typeof c.expires === "number" && c.expires >= 1e12) row.expires = Math.floor(c.expires / 1000);
-      return row;
-    }),
-  };
-}
-
-function hasSession(bundle: { cookies: Array<{ name: string }> }): boolean {
-  return bundle.cookies.some((c) => SESSION_NAMES.has(c.name));
-}
-
-class OwnerJar {
-  #cookies = new Map<string, string>();
-  absorb(res: Response): void {
-    for (const c of res.headers.getSetCookie()) {
-      const [pair] = c.split(";");
-      const i = pair!.indexOf("=");
-      const name = pair!.slice(0, i);
-      const value = pair!.slice(i + 1);
-      if (/Max-Age=0/i.test(c) || !value) this.#cookies.delete(name);
-      else this.#cookies.set(name, value);
-    }
-  }
-  header(): string {
-    return [...this.#cookies].map(([k, v]) => `${k}=${v}`).join("; ");
-  }
-}
-
-async function pasteToWorker(bundle: unknown): Promise<{ connected?: boolean; cookieCount?: number; source?: string }> {
-  const vars = loadDevVars();
-  const password = vars.OWNER_PASSWORD;
-  if (!password) throw new Error("OWNER_PASSWORD missing in .dev.vars");
-  const jar = new OwnerJar();
-
-  const loginPage = await fetch(`${WORKER}/login?next=/connect`, { redirect: "manual" });
-  jar.absorb(loginPage);
-  const loginCsrf = /name="csrf" value="([a-f0-9]{32})"/.exec(await loginPage.text())?.[1];
-  if (!loginCsrf) throw new Error("owner /login has no CSRF");
-  const login = await fetch(`${WORKER}/login`, {
-    method: "POST",
-    redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded", cookie: jar.header() },
-    body: new URLSearchParams({ csrf: loginCsrf, next: "/connect", password }),
-  });
-  jar.absorb(login);
-  if (login.status !== 302) throw new Error(`owner login failed (${login.status})`);
-
-  const connectPage = await fetch(`${WORKER}/connect`, { headers: { cookie: jar.header() } });
-  jar.absorb(connectPage);
-  const connectCsrf = /name="csrf" value="([a-f0-9]{32})"/.exec(await connectPage.text())?.[1];
-  if (!connectCsrf) throw new Error("GET /connect has no CSRF");
-
-  const paste = await fetch(`${WORKER}/connect/paste`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      cookie: jar.header(),
-    },
-    body: JSON.stringify({ csrf: connectCsrf, bundle }),
-  });
-  const body = (await paste.json()) as Record<string, unknown>;
-  if (!paste.ok || body.connected !== true) {
-    throw new Error(`paste failed ${paste.status}: ${JSON.stringify({ code: body.code, message: body.message })}`);
-  }
-  return body as { connected?: boolean; cookieCount?: number; source?: string };
-}
-
 async function main() {
-  const health = await fetch(`${WORKER}/healthz`);
-  if (!health.ok) throw new Error(`Worker not up at ${WORKER}`);
-
   await launchBrave();
   await ensureLoginTab().catch((err) => {
     console.log("navigate:", err instanceof Error ? err.message : err);
@@ -253,13 +158,12 @@ async function main() {
   console.log("WAITING_FOR_LOGIN — finish Shopee login (OTP ok) in the Brave window");
 
   const started = Date.now();
-  let bundle: ReturnType<typeof toBundle> | null = null;
+  let bundle: ReturnType<typeof toPasteBundle> | null = null;
   let lastBeat = 0;
   while (Date.now() - started < WAIT_MS) {
     try {
-      const cookies = await readCookies();
-      const next = toBundle(cookies);
-      if (hasSession(next)) {
+      const next = toPasteBundle(await readCookies());
+      if (hasSessionCookie(next)) {
         bundle = next;
         break;
       }
@@ -276,12 +180,11 @@ async function main() {
   if (!bundle) throw new Error("Timed out waiting for SPC_EC/SPC_ST — log in to Shopee in the Brave window");
 
   mkdirSync(resolve(process.cwd(), ".runtime/auth"), { recursive: true });
-  writeFileSync(BUNDLE_PATH, JSON.stringify(bundle, null, 2) + "\n");
-  const names = bundle.cookies.map((c) => c.name).sort();
-  console.log(`CAPTURED ${bundle.cookies.length} cookies: ${names.join(", ")}`);
+  await writeAtomic(BUNDLE_PATH, JSON.stringify(bundle, null, 2) + "\n");
+  console.log(`CAPTURED ${bundle.cookies.length} cookies: ${cookieNamesLine(bundle)}`);
 
-  const pasted = await pasteToWorker(bundle);
-  console.log(`PASTE_OK source=${pasted.source} cookieCount=${pasted.cookieCount}`);
+  const pasted = await pasteToWorker(bundle, WORKER);
+  console.log(`PASTE_OK ${WORKER} source=${pasted.source} cookieCount=${pasted.cookieCount}`);
 }
 
 main().catch((err) => {

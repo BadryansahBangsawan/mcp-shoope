@@ -3,7 +3,7 @@
 
 PUBLIC_BASE_URL=http://localhost:8787
 
-# Owner password for /authorize consent, /login and /connect (>= 16 chars).
+# Owner password for /authorize consent, /login and /connect (>= 12 chars).
 # Production: wrangler secret put OWNER_PASSWORD
 OWNER_PASSWORD=
 

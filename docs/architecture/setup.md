@@ -3,7 +3,7 @@
 ## 1. Secrets Worker
 
 ```
-OWNER_PASSWORD            ≥16 karakter
+OWNER_PASSWORD            ≥12 karakter
 SESSION_ENCRYPTION_KEY    openssl rand -base64 32
 ```
 
@@ -22,15 +22,9 @@ bun run dev
 curl http://localhost:8787/healthz
 ```
 
-Connect: buka `/login` → `/connect` → masuk HP/email. Jika captcha, tempel cookie JSON dari browser rumah.
+Connect: `bunx playwright install chromium` lalu `bun run auth` (Chrome for Testing membuka QR Shopee; scan di aplikasi). Skrip mengirim sesi ke `https://mcp.shopee.badry.engineer` (override `SHOPEE_MCP_BASE`). Halaman `/connect` tidak menampilkan form akun Shopee dan tidak menampilkan tempel cookie.
 
-Bundle paste:
-
-```
-{ "v": 1, "source": "browser-export", "cookies": [{ "name", "value", "domain", "path" }] }
-```
-
-Hanya domain `shopee.co.id` / `*.shopee.co.id`. Wajib `SPC_EC` atau `SPC_ST` yang domain-match apex. Cookie `www.shopee.co.id` di-rewrite ke `shopee.co.id` (`hostOnly: false`). Pihak ketiga / seller / partner di-drop.
+Sidecar hanya mengirim domain `shopee.co.id` / `*.shopee.co.id`. Wajib `SPC_EC` atau `SPC_ST` yang domain-match apex. Cookie `www.shopee.co.id` di-rewrite ke `shopee.co.id` (`hostOnly: false`). Pihak ketiga / seller / partner di-drop.
 
 Buka `/mcp` di browser tanpa Bearer = **401** (RFC 6750). Cek hidup lewat `/healthz`.
 

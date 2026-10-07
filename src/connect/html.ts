@@ -20,22 +20,24 @@ function connectLayout(title: string, csrfToken: string, body: string): string {
   return layout(title, `${body}\n${footer(csrfToken)}`, "shopee-mcp");
 }
 
-function pasteCard(csrfToken: string, extra = ""): string {
+function qrCard(csrfToken: string, extra = ""): string {
   const csrf = esc(csrfToken);
-  return `<section class="card" id="paste" aria-labelledby="paste-title">
+  return `<section class="card" id="qr" aria-labelledby="qr-title">
+  ${brandRow("Koneksi aman")}
   <header class="card-header">
-    <h2 id="paste-title">Tempel cookie (cadangan)</h2>
-    <p class="subtitle">JSON <code>v:1</code>, <code>source:"browser-export"</code>, daftar cookie <code>shopee.co.id</code>. Dipakai jika login Worker kena captcha/anti-bot. Jangan bagikan nilainya.</p>
+    <h1 id="qr-title">Scan QR Shopee</h1>
+    <p class="subtitle">Jalankan <code>bun run auth</code> di mesin ini. Chrome for Testing membuka halaman QR resmi Shopee. Scan di aplikasi Shopee (Scan QR/Barcode → Konfirmasi Log in). Skrip mengirim sesi ke Worker sendiri. Cloudflare Worker tidak menjalankan Chrome dan tidak menampilkan QR.</p>
   </header>
+  <div class="panel panel-warning inline-note">
+    <span class="status-icon" aria-hidden="true">!</span>
+    <span>Tidak ada form di halaman ini. Jangan ketik akun Shopee di Worker. Jangan tempel cookie.</span>
+  </div>
   ${extra}
-  <form method="POST" action="/connect/paste" autocomplete="off" class="form-stack">
-    <input type="hidden" name="csrf" value="${csrf}"/>
-    <label for="tokens">Bundle cookie JSON</label>
-    <textarea class="field" id="tokens" name="tokens" required minlength="20" placeholder='{"v":1,"source":"browser-export","cookies":[{"name":"SPC_EC","value":"…","domain":".shopee.co.id","path":"/"}]}'></textarea>
-    <div class="actions">
-      <button type="submit" class="btn btn-secondary">Simpan cookie</button>
-    </div>
-  </form>
+  <ol class="steps">
+    <li>Di laptop: <code>bun run auth</code></li>
+    <li>Di aplikasi Shopee: Scan QR/Barcode, lalu Konfirmasi Log in</li>
+    <li>Tunggu sampai Connect menunjukkan akun terhubung</li>
+  </ol>
   <form method="POST" action="/connect/disconnect">
     <input type="hidden" name="csrf" value="${csrf}"/>
     <button type="submit" class="btn btn-danger">Putuskan sesi akun</button>
@@ -44,34 +46,11 @@ function pasteCard(csrfToken: string, extra = ""): string {
 }
 
 export function connectLoginPage(opts: { csrfToken: string; statusHtml?: string }): string {
-  const csrf = esc(opts.csrfToken);
   const status = opts.statusHtml ?? "";
   return connectLayout(
     "Connect Shopee",
     opts.csrfToken,
-    `<section class="card" aria-labelledby="login-title">
-  ${brandRow("Masuk akun buyer")}
-  <header class="card-header">
-    <h1 id="login-title">Hubungkan akun Shopee</h1>
-    <p class="subtitle">Satu akun buyer di <strong>shopee.co.id</strong>. Password hanya untuk request ini — tidak disimpan.</p>
-  </header>
-  <div class="panel panel-neutral inline-note">
-    <span class="status-icon" aria-hidden="true">i</span>
-    <span>Worker meniru form login resmi. Jika Shopee menampilkan captcha, tempel cookie dari browser rumah.</span>
-  </div>
-  ${status ? `<div aria-live="polite">${status}</div>` : ""}
-  <form method="POST" action="/connect/login" autocomplete="off" class="form-stack">
-    <input type="hidden" name="csrf" value="${csrf}"/>
-    <label for="username">HP atau email</label>
-    <input class="field" id="username" name="username" required autocomplete="username" placeholder="0812… atau nama@contoh.com"/>
-    <label for="password">Password</label>
-    <input class="field" id="password" name="password" type="password" required autocomplete="current-password"/>
-    <div class="actions">
-      <button type="submit" class="btn btn-primary">Masuk</button>
-    </div>
-  </form>
-</section>
-${pasteCard(opts.csrfToken)}`,
+    qrCard(opts.csrfToken, status ? `<div aria-live="polite">${status}</div>` : ""),
   );
 }
 
@@ -121,7 +100,7 @@ export function connectPasteNeededHtml(opts: { csrfToken: string; reason: string
     csrfToken: opts.csrfToken,
     statusHtml: `<div class="panel panel-warning err" role="alert">
   <span class="status-icon" aria-hidden="true">!</span>
-  <div><strong>Login Worker tidak bisa dilanjutkan</strong><br/><span>${esc(opts.reason)}</span></div>
+  <div><strong>Scan QR lewat <code>bun run auth</code></strong><br/><span>${esc(opts.reason)}</span></div>
 </div>`,
   });
 }
@@ -190,7 +169,7 @@ export function connectGoneHtml(opts: { csrfToken: string; message: string }): s
   </header>
   <div class="panel panel-danger">
     <span class="status-icon" aria-hidden="true">!</span>
-    <div><strong>410 Gone</strong><br/><span class="muted">Masuk dengan HP/email di /connect.</span></div>
+    <div><strong>410 Gone</strong><br/><span class="muted">Jalankan <code>bun run auth</code> lalu scan QR di aplikasi Shopee.</span></div>
   </div>
   <div class="actions">
     <a class="btn btn-primary" href="/connect">Buka Connect</a>

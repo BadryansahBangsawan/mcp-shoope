@@ -32,6 +32,8 @@ Body JSON (kunci): `username`, `vcode`, `support_ivs`. OTP 4–8 alfanumerik. Pe
 
 ## Bukan hop Worker
 
-SSO Google / Facebook / Apple = 410. Otorisasi Open Platform (`auth_partner`, token shop) = 410. QR login tidak didaftarkan sampai ter-capture.
+SSO Google / Facebook / Apple = 410. Otorisasi Open Platform (`auth_partner`, token shop) = 410.
+
+QR login **bukan hop Worker**. Sidecar `bun run auth` membuka halaman QR resmi Shopee (tautan “Log in dengan QR” di `/buyer/login`). Operator scan di aplikasi (Scan QR/Barcode → Konfirmasi Log in). Worker tidak menampilkan QR dan tidak mem-poll status QR. Jangan invent hop QR (`gen_qrcode`, `qrcode_login_status`, dll.).
 
 Jangan invent hop login tambahan.

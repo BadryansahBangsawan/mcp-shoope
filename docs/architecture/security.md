@@ -2,7 +2,7 @@
 
 ## Trust boundary
 
-- Owner password (≥16) + CSRF melindungi `/authorize`, `/login`, `/connect`. Tidak ada pengecualian callback Open Platform.
+- Owner password (≥12) + CSRF melindungi `/authorize`, `/login`, `/connect`. Tidak ada pengecualian callback Open Platform.
 - Klien MCP memakai OAuth 2.1 (DCR, PKCE S256). `authInfo.token` ke handler = `"redacted"`.
 - Dispatcher adalah satu-satunya `fetch`. Sandbox `globalOutbound: null`. Request hanya `operationId|path|query|body`.
 - Sesi buyer: AES-GCM v2 + AAD (`sp-shopee-sessions|…`). Cookie jar terenkripsi. Pending OTP **tanpa** password, TTL 10 menit.
@@ -10,7 +10,7 @@
 
 ## Unofficial XHR
 
-Produk meniru form login resmi akun **milik operator** untuk baca data akun itu. Ini melanggar ToS Shopee (bot/emulator tidak resmi). Bukan mass scrape, bukan checkout, bukan akun orang lain. Rate limit Connect: 10/IP, 6/user, 20 global / 15 menit (kunci di-hash).
+Login Shopee dijalankan di mesin operator (`bun run auth`, Chrome for Testing, scan QR di aplikasi). Worker menerima sesi lewat sidecar (`POST /connect/paste`); halaman Connect tidak menampilkan form akun Shopee dan tidak menampilkan tempel cookie. Ini XHR tidak resmi — melanggar ToS Shopee (bot/emulator). Bukan mass scrape, bukan checkout, bukan akun orang lain. Rate limit Connect: 10/IP, 6/user, 20 global / 15 menit (kunci di-hash).
 
 ## Anti-bot / IP Worker
 

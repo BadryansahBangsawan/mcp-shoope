@@ -26,7 +26,7 @@ interface Env {
   SHOPEE_REGION: string;
 
   // Secrets
-  /** Owner password for /authorize, /login, /connect (>= 16 chars). */
+  /** Owner password for /authorize, /login, /connect (>= 12 chars). */
   OWNER_PASSWORD?: string;
   /** Base64 32-byte AES-GCM key; also the HKDF root for owner cookies. */
   SESSION_ENCRYPTION_KEY?: string;

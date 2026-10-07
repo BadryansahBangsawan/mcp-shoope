@@ -48,7 +48,7 @@ const MAX_PASSWORD_FAILURES = 10;
 /**
  * Only failed attempts count, per client network (IPv4 address or IPv6 /64).
  * There is deliberately no global bucket: an attacker must not be able to lock
- * the owner out from another network. OWNER_PASSWORD has >= 16 chars, so
+ * the owner out from another network. OWNER_PASSWORD has >= 12 chars, so
  * 10 guesses per network per 15 minutes cannot brute-force it.
  */
 async function checkPassword(

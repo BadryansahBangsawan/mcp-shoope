@@ -24,21 +24,16 @@ Bukan:
 
 ## Owner: Connect di produksi
 
-Deploy **tidak** menyalin cookie dari laptop. Durable Object produksi kosong sampai operator masuk di host produksi.
+Deploy **tidak** menyalin cookie dari laptop. Durable Object produksi kosong sampai operator Connect. Cloudflare Worker **tidak** menjalankan Chrome — login Shopee di mesin ini.
 
-1. Set secret `OWNER_PASSWORD` (≥16) dan `SESSION_ENCRYPTION_KEY`.
-2. Buka `https://mcp.shopee.badry.engineer/login` lalu `/connect`.
-3. Masuk dengan HP/email + password **akun buyer sendiri**. OTP jika Shopee memintanya.
-4. Jika login Worker kena captcha/anti-bot (IP Cloudflare), tempel cookie JSON dari browser rumah.
-5. Saat klien minta consent, centang hanya `shopee:read`.
+1. Set secret `OWNER_PASSWORD` (≥12) dan `SESSION_ENCRYPTION_KEY`.
+2. `bunx playwright install chromium` (sekali).
+3. `bun run auth` — Chrome for Testing membuka halaman QR Shopee. Scan di aplikasi Shopee (Scan QR/Barcode → Konfirmasi Log in). Skrip menyimpan `.runtime/auth/paste-tokens.json` (gitignored) dan POST ke Worker. Jangan ketik akun Shopee di Worker; jangan tempel cookie.
+4. Cek `GET /connect/status` → `connected: true`. Saat klien minta consent, centang hanya `shopee:read`.
 
-Paste bundle:
+Lokal: `SHOPEE_MCP_BASE=http://127.0.0.1:8787 bun run auth`. Tanpa kirim otomatis: `SHOPEE_AUTH_SKIP_PASTE=1`.
 
-```json
-{ "v": 1, "source": "browser-export", "cookies": [{ "name": "SPC_EC", "value": "…", "domain": ".shopee.co.id", "path": "/" }] }
-```
-
-Wajib ada `SPC_EC` atau `SPC_ST` yang akan dikirim ke `shopee.co.id`. Cookie `www.shopee.co.id` di-rewrite ke apex. Domain pihak ketiga / seller / partner di-drop.
+Sidecar wajib mengirim cookie `SPC_EC` atau `SPC_ST` ke `shopee.co.id`. Cookie `www.shopee.co.id` di-rewrite ke apex. Domain pihak ketiga / seller / partner di-drop.
 
 Tanpa sesi: `execute` gagal `SHOPEE_AUTH_EXPIRED`.
 
@@ -64,9 +59,11 @@ Repo privat operator. Tidak ada LICENSE publik.
 ```
 bun install
 cp .dev.vars.example .dev.vars
+bunx playwright install chromium
 bun run check-types && bun run test && bun run coverage:validate && bun run openapi:validate
 bun run dev
 curl http://localhost:8787/healthz
+SHOPEE_MCP_BASE=http://127.0.0.1:8787 bun run auth
 ```
 
 Tes: `bun run e2e -- --base http://localhost:8787` (butuh owner password). `--connect` paste dari `SHOPEE_E2E_PASTE` atau `.runtime/auth/paste-tokens.json`. `--live` memanggil read akun.

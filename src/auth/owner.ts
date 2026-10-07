@@ -3,7 +3,7 @@ import { AppError, ErrorCodes } from "../errors/codes";
 /**
  * Single-owner authentication for browser pages (/authorize consent, /login, /connect).
  *
- * - OWNER_PASSWORD (Worker secret, >= 16 chars) proves the human is the owner.
+ * - OWNER_PASSWORD (Worker secret, >= 12 chars) proves the human is the owner.
  * - Owner cookie is an HMAC-signed, expiring token. The HMAC key is derived via
  *   HKDF from SESSION_ENCRYPTION_KEY with the password digest as salt, so
  *   rotating either secret invalidates every issued cookie.
@@ -13,7 +13,7 @@ import { AppError, ErrorCodes } from "../errors/codes";
 export const OWNER_SUBJECT = "owner";
 const OWNER_COOKIE_TTL_S = 8 * 60 * 60;
 const CSRF_COOKIE_TTL_S = OWNER_COOKIE_TTL_S;
-const MIN_PASSWORD_LENGTH = 16;
+const MIN_PASSWORD_LENGTH = 12;
 
 export interface OwnerEnv {
   OWNER_PASSWORD?: string;

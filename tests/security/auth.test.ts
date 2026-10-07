@@ -58,6 +58,8 @@ describe("owner password and cookie", () => {
   it("fails closed when not configured", async () => {
     expect(ownerAuthConfigured({})).toBe(false);
     expect(ownerAuthConfigured({ ...OWNER_ENV, OWNER_PASSWORD: "too-short" })).toBe(false);
+    expect(ownerAuthConfigured({ ...OWNER_ENV, OWNER_PASSWORD: "abcdefghijk" })).toBe(false);
+    expect(ownerAuthConfigured({ ...OWNER_ENV, OWNER_PASSWORD: "abcdefghijkl" })).toBe(true);
     await expect(verifyOwnerPassword({}, "x")).rejects.toMatchObject({ code: ErrorCodes.UNAUTHORIZED });
   });
 
