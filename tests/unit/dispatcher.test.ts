@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { HOSTS } from "../../src/dispatcher/allowlist";
+import {
+  SHOPEE_ACCEPT_LANGUAGE,
+  SHOPEE_API_SOURCE,
+  SHOPEE_LANGUAGE,
+  SHOPEE_USER_AGENT,
+} from "../../src/dispatcher/client-headers";
 import { ShopeeDispatcher, looksLikeLoginHtml } from "../../src/dispatcher/shopee-dispatcher";
 import { createRequestSignals, fetchUpstream } from "../../src/dispatcher/upstream";
 import { ErrorCodes } from "../../src/errors/codes";
@@ -117,8 +123,43 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
     expect(h.get("x-csrftoken")).toBe("csrf-value");
     expect(h.get("origin")).toBe("https://shopee.co.id");
     expect(h.get("accept")).toBe("application/json");
+    expect(h.get("user-agent")).toBe(SHOPEE_USER_AGENT);
+    expect(h.get("accept-language")).toBe(SHOPEE_ACCEPT_LANGUAGE);
+    expect(h.get("x-api-source")).toBe(SHOPEE_API_SOURCE);
+    expect(h.get("x-shopee-language")).toBe(SHOPEE_LANGUAGE);
+    expect(h.get("x-requested-with")).toBe("XMLHttpRequest");
     expect(sentInit(fetchImpl).method).toBe("GET");
     expect(sentInit(fetchImpl).body).toBeUndefined();
+  });
+
+  it("sends jar csrftoken when session.csrfToken is stale", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: {} }));
+    const { d } = dispatcher(fetchImpl, {
+      session: mockSession({
+        cookies: [cookie("SPC_EC", "ec"), cookie("csrftoken", "jar-csrf")],
+        csrfToken: "stale-csrf",
+      }),
+    });
+    await d.dispatch({ operationId: "cart.get", body: {} });
+    const h = sentHeaders(fetchImpl);
+    expect(h.get("x-csrftoken")).toBe("jar-csrf");
+    expect(h.get("cookie")).toContain("csrftoken=jar-csrf");
+    expect(h.get("cookie")).not.toContain("stale-csrf");
+  });
+
+  it("injects csrftoken cookie from session when the jar has none", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: {} }));
+    const { d } = dispatcher(fetchImpl, {
+      session: mockSession({
+        cookies: [cookie("SPC_EC", "ec")],
+        csrfToken: "session-only",
+      }),
+    });
+    await d.dispatch({ operationId: "cart.get", body: {} });
+    const h = sentHeaders(fetchImpl);
+    expect(h.get("x-csrftoken")).toBe("session-only");
+    expect(h.get("cookie")).toContain("csrftoken=session-only");
+    expect(h.get("cookie")).toContain("SPC_EC=ec");
   });
 
   it("rejects extra reserved keys on closed schemas before they hit the wire", async () => {

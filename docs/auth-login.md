@@ -8,7 +8,7 @@ Password dan OTP hidup hanya di request Connect. Pending OTP di Durable Object *
 
 `GET https://shopee.co.id/buyer/login`
 
-Halaman form buyer (tab HP / email). Cookie `csrftoken` (jika ada) diinjeksikan sebagai header `x-csrftoken`. Status 403 / 3xx → login gagal (fail-closed).
+Halaman form buyer (tab HP / email). Hop memakai `User-Agent` Chrome + `Accept-Language` (bukan token anti-bot). Cookie `csrftoken` (jika ada) diinjeksikan sebagai header `x-csrftoken`. Status 403 / 3xx → login gagal (fail-closed).
 
 ## Submit password
 

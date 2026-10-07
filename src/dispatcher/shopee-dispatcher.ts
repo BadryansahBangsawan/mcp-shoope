@@ -7,6 +7,7 @@ import type { ApiOperation } from "../registry/types";
 import { validateOperationInput } from "../registry/validate";
 import type { ShopeeSessionContext, ShopeeSessionProvider } from "../session/types";
 import { HOSTS, assertAllowedUrl, resolveHost } from "./allowlist";
+import { applyShopeeBrowserHeaders } from "./client-headers";
 import { applyQuery, buildPath, resolveUrl } from "./path";
 import {
   createRequestSignals,
@@ -176,13 +177,18 @@ export class ShopeeDispatcher {
     assertAllowedUrl(url);
 
     const jar = CookieJar.fromJSON(session.cookies);
+    // CSRF is a cookie+header pair. Prefer the jar token; if only session.csrfToken
+    // exists, inject it so POSTs (cart/voucher) are not 403'd for a missing cookie.
+    if (session.csrfToken && !jar.get(url, "csrftoken")) {
+      jar.set(url, "csrftoken", session.csrfToken);
+    }
     const cookie = jar.headerFor(url);
-    const csrf = session.csrfToken || jar.get(url, "csrftoken") || "";
+    const csrf = jar.get(url, "csrftoken") || session.csrfToken || "";
     const headers = new Headers();
     headers.set("accept", "application/json");
     headers.set("origin", ORIGIN);
     headers.set("referer", `${ORIGIN}/`);
-    headers.set("x-requested-with", "XMLHttpRequest");
+    applyShopeeBrowserHeaders(headers, "xhr");
     if (cookie) headers.set("cookie", cookie);
     if (csrf) headers.set("x-csrftoken", csrf);
 

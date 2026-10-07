@@ -1,3 +1,4 @@
+import { applyShopeeBrowserHeaders, SHOPEE_HTML_ACCEPT } from "../dispatcher/client-headers";
 import { sha256Hex } from "../session/crypto";
 import type { PendingAuthDraft, PendingAuthState, StoredCookie } from "../session/types";
 import { CookieJar, SESSION_COOKIE_NAMES } from "./cookie-jar";
@@ -66,9 +67,14 @@ export async function runShopeeLoginFlow(input: LoginFlowInput): Promise<LoginFl
 
   const jar = new CookieJar();
   const pageUrl = new URL(LOGIN_PAGE_URL);
+  const pageHeaders = new Headers();
+  pageHeaders.set("accept", SHOPEE_HTML_ACCEPT);
+  pageHeaders.set("origin", ORIGIN);
+  pageHeaders.set("referer", `${ORIGIN}/`);
+  applyShopeeBrowserHeaders(pageHeaders, "html");
   const pageRes = await timedFetch(fetchImpl, LOGIN_PAGE_URL, {
     method: "GET",
-    headers: { accept: "text/html", origin: ORIGIN, referer: `${ORIGIN}/` },
+    headers: pageHeaders,
   });
   jar.applyResponse(pageUrl, pageRes.headers);
   const pageBody = await pageRes.text();
@@ -159,7 +165,7 @@ function authHeaders(jar: CookieJar, csrf: string, url: string): Headers {
   h.set("accept", "application/json");
   h.set("origin", ORIGIN);
   h.set("referer", LOGIN_PAGE_URL);
-  h.set("x-requested-with", "XMLHttpRequest");
+  applyShopeeBrowserHeaders(h, "xhr");
   h.set("x-csrftoken", csrf);
   const cookie = jar.headerFor(new URL(url));
   if (cookie) h.set("cookie", cookie);

@@ -14,6 +14,11 @@ import {
   normalizeUsername,
   parseLoginJson,
 } from "../../src/connect/login-parse";
+import {
+  SHOPEE_API_SOURCE,
+  SHOPEE_HTML_ACCEPT,
+  SHOPEE_USER_AGENT,
+} from "../../src/dispatcher/client-headers";
 import { sha256Hex } from "../../src/session/crypto";
 import type { PendingAuthState, StoredCookie } from "../../src/session/types";
 
@@ -100,6 +105,28 @@ describe("runShopeeLoginFlow", () => {
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       expect(String(fetchImpl.mock.calls[0]![0])).toBe(LOGIN_PAGE_URL);
     }
+  });
+
+  it("GET login page and POST login send a browser User-Agent, not a Worker default", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async (input, init) => {
+      const headers = new Headers(init.headers);
+      expect(headers.get("user-agent")).toBe(SHOPEE_USER_AGENT);
+      if (String(input) === LOGIN_PAGE_URL) {
+        expect(headers.get("accept")).toBe(SHOPEE_HTML_ACCEPT);
+        expect(headers.get("x-api-source")).toBeNull();
+        return loginPageOk();
+      }
+      expect(headers.get("x-api-source")).toBe(SHOPEE_API_SOURCE);
+      expect(headers.get("x-requested-with")).toBe("XMLHttpRequest");
+      return json({ error: 0, data: {} }, 200, ["SPC_EC=session-ec; Path=/"]);
+    });
+    const result = await runShopeeLoginFlow({
+      username: "buyer@example.com",
+      password: "s3cret-pass",
+      fetchImpl,
+    });
+    expect(result.kind).toBe("connected");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("captcha/anti-bot on the login page → needs_paste", async () => {
