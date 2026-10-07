@@ -16,7 +16,7 @@ Login Shopee di form `/connect`. Worker POST ke hop ter-capture; cookie jar tere
 
 Shopee sering menolak klien non-browser (`af-ac-enc-*`, captcha, bind IP/UA). Fetch dari IP Cloudflare bisa 403 meski cookie valid. Login Worker bisa gagal.
 
-Dispatcher dan hop login mengirim identitas browser PC (`User-Agent` Chrome, `Accept-Language`, `x-api-source: pc`, `x-shopee-language: id`) supaya XHR tidak 403 hanya karena klien terlihat sebagai Worker. **Jangan** generate header anti-bot (`af-ac-enc-*`) yang tidak ter-capture. **Jangan** simpan password/OTP. CSRF memakai cookie `csrftoken` di jar (bukan token sesi yang lebih lama).
+Dispatcher dan hop login mengirim identitas browser PC (`User-Agent` Chrome, `Accept-Language`, Client Hints `sec-ch-ua*` yang cocok dengan UA, `sec-fetch-*`, `x-api-source: pc`, `x-shopee-language: id`) supaya XHR tidak 403 hanya karena klien terlihat sebagai Worker. Referer mengikuti halaman UI yang punya XHR itu (mis. `/user/purchase` untuk daftar pesanan), bukan selalu beranda. Untuk `orders.list` / `orders.detail` / `cart.get` / `voucher.list`, dispatcher GET HTML halaman itu dulu dan memakai Set-Cookie dari respons hanya di memori request itu (session provider tidak punya save). **Jangan** generate header anti-bot (`af-ac-enc-*`) yang tidak ter-capture. **Jangan** kirim `_oft` / `list_type` yang diinvent. **Jangan** simpan password/OTP. CSRF memakai cookie `csrftoken` di jar (bukan token sesi yang lebih lama).
 
 403 JSON (bukan HTML login) = `FORBIDDEN`, sesi tetap. 403 HTML login = expire. 429 = `SHOPEE_RATE_LIMITED`, sesi tetap.
 

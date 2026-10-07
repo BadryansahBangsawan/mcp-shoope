@@ -69,7 +69,7 @@ describe("Code Mode with the real dispatcher", () => {
       expect(headers.get("cookie")).toBe(`SPC_EC=${COOKIE_EC}; csrftoken=${CSRF}`);
       expect(headers.get("x-csrftoken")).toBe(CSRF);
       expect(headers.get("origin")).toBe("https://shopee.co.id");
-      expect(headers.get("referer")).toBe("https://shopee.co.id/");
+      expect(headers.get("referer")).toBe("https://shopee.co.id/user/account/profile");
       return Response.json({ error: "", data: { username: "buyer" } });
     });
     const out = await execute(

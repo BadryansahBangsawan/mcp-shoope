@@ -111,13 +111,17 @@ describe("runShopeeLoginFlow", () => {
     const fetchImpl = vi.fn<FetchLike>(async (input, init) => {
       const headers = new Headers(init.headers);
       expect(headers.get("user-agent")).toBe(SHOPEE_USER_AGENT);
+      expect(headers.get("sec-ch-ua")).toBeTruthy();
       if (String(input) === LOGIN_PAGE_URL) {
         expect(headers.get("accept")).toBe(SHOPEE_HTML_ACCEPT);
         expect(headers.get("x-api-source")).toBeNull();
+        expect(headers.get("sec-fetch-mode")).toBe("navigate");
         return loginPageOk();
       }
       expect(headers.get("x-api-source")).toBe(SHOPEE_API_SOURCE);
       expect(headers.get("x-requested-with")).toBe("XMLHttpRequest");
+      expect(headers.get("sec-fetch-mode")).toBe("cors");
+      expect(headers.get("referer")).toBe(LOGIN_PAGE_URL);
       return json({ error: 0, data: {} }, 200, ["SPC_EC=session-ec; Path=/"]);
     });
     const result = await runShopeeLoginFlow({

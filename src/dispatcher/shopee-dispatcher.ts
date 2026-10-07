@@ -7,10 +7,17 @@ import type { ApiOperation } from "../registry/types";
 import { validateOperationInput } from "../registry/validate";
 import type { ShopeeSessionContext, ShopeeSessionProvider } from "../session/types";
 import { HOSTS, assertAllowedUrl, resolveHost } from "./allowlist";
-import { applyShopeeBrowserHeaders } from "./client-headers";
+import {
+  applyShopeeBrowserHeaders,
+  needsPageWarmup,
+  refererForOperation,
+  SHOPEE_HTML_ACCEPT,
+} from "./client-headers";
 import { applyQuery, buildPath, resolveUrl } from "./path";
 import {
+  abortError,
   createRequestSignals,
+  discardBody,
   fetchUpstream,
   readBodyCapped,
   type UpstreamContext,
@@ -49,6 +56,9 @@ const DEFAULT_LIMITS: DispatcherLimits = {
   maxBytes: 2_000_000,
   maxRedirects: 3,
 };
+
+/** HTML GET of the UI page before list XHR. Separate from the 25s API budget. */
+const PAGE_WARMUP_TIMEOUT_MS = 8_000;
 
 const ORIGIN = `https://${HOSTS.www}`;
 
@@ -107,6 +117,9 @@ export class ShopeeDispatcher {
       timeoutMs: this.#limits.timeoutMs,
       maxRedirects: this.#limits.maxRedirects,
     };
+    if (needsPageWarmup(prepared.op.operationId)) {
+      await this.#warmupPage(prepared, ctx);
+    }
     const outcome = await fetchUpstream(prepared.url, prepared.init, ctx);
     if (outcome.kind === "login-redirect") {
       await this.#expire(prepared.op, prepared.session, "login-redirect");
@@ -120,6 +133,8 @@ export class ShopeeDispatcher {
       throw new AppError(ErrorCodes.SHOPEE_AUTH_EXPIRED, "Sesi Shopee kedaluwarsa; sambungkan lagi di /connect");
     }
     if (http === "forbidden") {
+      const snippet = text.trim().startsWith("{") ? text.replace(/\s+/g, " ").slice(0, 160) : "nonjson";
+      log("warn", "shopee.forbidden", { operationId: prepared.op.operationId, snippet });
       throw new AppError(ErrorCodes.FORBIDDEN, `Upstream forbidden (403) for ${prepared.op.operationId}`);
     }
     if (http === "rate") {
@@ -187,7 +202,7 @@ export class ShopeeDispatcher {
     const headers = new Headers();
     headers.set("accept", "application/json");
     headers.set("origin", ORIGIN);
-    headers.set("referer", `${ORIGIN}/`);
+    headers.set("referer", refererForOperation(op.operationId));
     applyShopeeBrowserHeaders(headers, "xhr");
     if (cookie) headers.set("cookie", cookie);
     if (csrf) headers.set("x-csrftoken", csrf);
@@ -197,7 +212,58 @@ export class ShopeeDispatcher {
       headers.set("content-type", "application/json");
       init.body = JSON.stringify(stripReservedBody(input.body));
     }
-    return { req, op, session, host, path, url, init };
+    return { req, op, session, host, path, url, init, jar };
+  }
+
+  /**
+   * GET the UI page that owns this XHR so Shopee can set page cookies.
+   * Apply Set-Cookie to the in-memory jar for this dispatch only — the session
+   * provider has no save(). Never expire the jar from a warmup failure.
+   */
+  async #warmupPage(prepared: Prepared, ctx: UpstreamContext): Promise<void> {
+    const pageUrl = new URL(refererForOperation(prepared.op.operationId));
+    if (pageUrl.pathname === "/") return;
+    try {
+      assertAllowedUrl(pageUrl);
+    } catch {
+      return;
+    }
+    const headers = new Headers();
+    headers.set("accept", SHOPEE_HTML_ACCEPT);
+    headers.set("origin", ORIGIN);
+    headers.set("referer", `${ORIGIN}/`);
+    applyShopeeBrowserHeaders(headers, "html");
+    const cookie = prepared.jar.headerFor(pageUrl);
+    if (cookie) headers.set("cookie", cookie);
+
+    const timeout = AbortSignal.timeout(PAGE_WARMUP_TIMEOUT_MS);
+    const signal = AbortSignal.any([timeout, ctx.signal]);
+    const fetchImpl = this.#fetchImpl;
+    try {
+      const res = await fetchImpl(pageUrl.toString(), {
+        method: "GET",
+        headers,
+        redirect: "manual",
+        signal,
+      });
+      prepared.jar.applyResponse(pageUrl, res.headers);
+      discardBody(res);
+    } catch (err) {
+      if (ctx.signal.aborted) throw abortError(ctx);
+      log("warn", "shopee.page_warmup_failed", {
+        operationId: prepared.op.operationId,
+        path: pageUrl.pathname,
+        err: err instanceof Error ? err.name : "error",
+      });
+      return;
+    }
+
+    const xhrHeaders = prepared.init.headers;
+    if (!(xhrHeaders instanceof Headers)) return;
+    const nextCookie = prepared.jar.headerFor(prepared.url);
+    if (nextCookie) xhrHeaders.set("cookie", nextCookie);
+    const csrf = prepared.jar.get(prepared.url, "csrftoken") || prepared.session.csrfToken || "";
+    if (csrf) xhrHeaders.set("x-csrftoken", csrf);
   }
 
   async #expire(op: ApiOperation, session: ShopeeSessionContext, reason: string): Promise<void> {
@@ -221,6 +287,7 @@ interface Prepared {
   path: string;
   url: URL;
   init: RequestInit;
+  jar: CookieJar;
 }
 
 function definedQuery(

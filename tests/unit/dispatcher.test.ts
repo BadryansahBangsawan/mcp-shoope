@@ -4,7 +4,11 @@ import {
   SHOPEE_ACCEPT_LANGUAGE,
   SHOPEE_API_SOURCE,
   SHOPEE_LANGUAGE,
+  SHOPEE_SEC_CH_UA,
+  SHOPEE_SEC_CH_UA_MOBILE,
+  SHOPEE_SEC_CH_UA_PLATFORM,
   SHOPEE_USER_AGENT,
+  refererForOperation,
 } from "../../src/dispatcher/client-headers";
 import { ShopeeDispatcher, looksLikeLoginHtml } from "../../src/dispatcher/shopee-dispatcher";
 import { createRequestSignals, fetchUpstream } from "../../src/dispatcher/upstream";
@@ -76,6 +80,18 @@ function sentHeaders(fetchImpl: ReturnType<typeof vi.fn>, call = 0): Headers {
   return new Headers(sentInit(fetchImpl, call).headers);
 }
 
+function apiCall(fetchImpl: ReturnType<typeof vi.fn>): number {
+  const i = fetchImpl.mock.calls.findIndex((c) => {
+    try {
+      return new URL(String(c[0])).pathname.startsWith("/api/");
+    } catch {
+      return String(c[0]).includes("/api/");
+    }
+  });
+  expect(i).toBeGreaterThanOrEqual(0);
+  return i;
+}
+
 describe("looksLikeLoginHtml", () => {
   it("matches buyer login HTML and rejects JSON", () => {
     expect(looksLikeLoginHtml("<html><a href='/buyer/login'>masuk</a></html>")).toBe(true);
@@ -122,12 +138,19 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
     expect(h.get("cookie")).toBe("SPC_EC=ec; csrftoken=csrf-value");
     expect(h.get("x-csrftoken")).toBe("csrf-value");
     expect(h.get("origin")).toBe("https://shopee.co.id");
+    expect(h.get("referer")).toBe(refererForOperation("account.profile"));
     expect(h.get("accept")).toBe("application/json");
     expect(h.get("user-agent")).toBe(SHOPEE_USER_AGENT);
     expect(h.get("accept-language")).toBe(SHOPEE_ACCEPT_LANGUAGE);
     expect(h.get("x-api-source")).toBe(SHOPEE_API_SOURCE);
     expect(h.get("x-shopee-language")).toBe(SHOPEE_LANGUAGE);
     expect(h.get("x-requested-with")).toBe("XMLHttpRequest");
+    expect(h.get("sec-ch-ua")).toBe(SHOPEE_SEC_CH_UA);
+    expect(h.get("sec-ch-ua-mobile")).toBe(SHOPEE_SEC_CH_UA_MOBILE);
+    expect(h.get("sec-ch-ua-platform")).toBe(SHOPEE_SEC_CH_UA_PLATFORM);
+    expect(h.get("sec-fetch-dest")).toBe("empty");
+    expect(h.get("sec-fetch-mode")).toBe("cors");
+    expect(h.get("sec-fetch-site")).toBe("same-origin");
     expect(sentInit(fetchImpl).method).toBe("GET");
     expect(sentInit(fetchImpl).body).toBeUndefined();
   });
@@ -141,7 +164,7 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
       }),
     });
     await d.dispatch({ operationId: "cart.get", body: {} });
-    const h = sentHeaders(fetchImpl);
+    const h = sentHeaders(fetchImpl, apiCall(fetchImpl));
     expect(h.get("x-csrftoken")).toBe("jar-csrf");
     expect(h.get("cookie")).toContain("csrftoken=jar-csrf");
     expect(h.get("cookie")).not.toContain("stale-csrf");
@@ -156,7 +179,7 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
       }),
     });
     await d.dispatch({ operationId: "cart.get", body: {} });
-    const h = sentHeaders(fetchImpl);
+    const h = sentHeaders(fetchImpl, apiCall(fetchImpl));
     expect(h.get("x-csrftoken")).toBe("session-only");
     expect(h.get("cookie")).toContain("csrftoken=session-only");
     expect(h.get("cookie")).toContain("SPC_EC=ec");
@@ -194,12 +217,74 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
     const { d } = dispatcher(fetchImpl);
     const result = await d.dispatch({ operationId: "cart.get", body: {} });
     expect(result.status).toBe(200);
-    const url = new URL(sentUrl(fetchImpl));
+    const i = apiCall(fetchImpl);
+    const url = new URL(sentUrl(fetchImpl, i));
     expect(url.pathname).toBe("/api/v4/cart/get");
-    expect(sentInit(fetchImpl).method).toBe("POST");
-    expect(sentInit(fetchImpl).body).toBe("{}");
-    expect(sentHeaders(fetchImpl).get("content-type")).toBe("application/json");
-    expect(sentHeaders(fetchImpl).get("cookie")).toContain("SPC_EC=ec");
+    expect(sentInit(fetchImpl, i).method).toBe("POST");
+    expect(sentInit(fetchImpl, i).body).toBe("{}");
+    expect(sentHeaders(fetchImpl, i).get("content-type")).toBe("application/json");
+    expect(sentHeaders(fetchImpl, i).get("cookie")).toContain("SPC_EC=ec");
+    expect(sentHeaders(fetchImpl, i).get("referer")).toBe(refererForOperation("cart.get"));
+  });
+
+  it("sends the purchase-page Referer for orders.list, not the homepage", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: { order_list: [] } }));
+    const { d } = dispatcher(fetchImpl);
+    await d.dispatch({ operationId: "orders.list", query: { limit: 10, offset: 0 } });
+    expect(new URL(sentUrl(fetchImpl, 0)).pathname).toBe("/user/purchase");
+    expect(sentInit(fetchImpl, 0).method).toBe("GET");
+    expect(sentHeaders(fetchImpl, 0).get("sec-fetch-mode")).toBe("navigate");
+    expect(sentHeaders(fetchImpl, 0).get("x-api-source")).toBeNull();
+    const i = apiCall(fetchImpl);
+    const url = new URL(sentUrl(fetchImpl, i));
+    expect(url.pathname).toBe("/api/v4/order/get_all_order_and_checkout_list");
+    expect(url.searchParams.get("limit")).toBe("10");
+    expect(url.searchParams.get("offset")).toBe("0");
+    expect(url.searchParams.get("_oft")).toBeNull();
+    expect(url.searchParams.get("list_type")).toBeNull();
+    expect(sentHeaders(fetchImpl, i).get("referer")).toBe("https://shopee.co.id/user/purchase");
+    expect(sentHeaders(fetchImpl, i).get("origin")).toBe("https://shopee.co.id");
+    expect(sentHeaders(fetchImpl, i).get("sec-fetch-mode")).toBe("cors");
+  });
+
+  it("applies purchase-page Set-Cookie to the orders.list XHR without persisting or inventing tokens", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const href = String(input);
+      if (href.includes("/user/purchase") && !href.includes("/api/")) {
+        return new Response("<html>purchase</html>", {
+          status: 200,
+          headers: {
+            "content-type": "text/html",
+            "set-cookie": "SPC_F=from-page; Path=/; Domain=.shopee.co.id",
+          },
+        });
+      }
+      return json({ error: 0, data: { order_list: [] } });
+    });
+    const { d, markExpired } = dispatcher(fetchImpl);
+    await d.dispatch({ operationId: "orders.list", query: { limit: 5, offset: 0 } });
+    const i = apiCall(fetchImpl);
+    const cookie = sentHeaders(fetchImpl, i).get("cookie") ?? "";
+    expect(cookie).toContain("SPC_F=from-page");
+    expect(cookie).toContain("SPC_EC=ec");
+    expect(sentHeaders(fetchImpl, i).get("af-ac-enc-dat")).toBeNull();
+    expect(markExpired).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("still dispatches orders.list when the purchase-page warmup fails", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const href = String(input);
+      if (href.includes("/user/purchase") && !href.includes("/api/")) {
+        throw new TypeError("Failed to fetch");
+      }
+      return json({ error: 0, data: { order_list: [] } });
+    });
+    const { d, markExpired } = dispatcher(fetchImpl);
+    const result = await d.dispatch({ operationId: "orders.list" });
+    expect(result.status).toBe(200);
+    expect(apiCall(fetchImpl)).toBe(1);
+    expect(markExpired).not.toHaveBeenCalled();
   });
 
   it("cart.add is MUTATION_DISABLED unless mutations + allowMutation", async () => {
