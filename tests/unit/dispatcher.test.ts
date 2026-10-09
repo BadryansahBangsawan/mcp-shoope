@@ -12,8 +12,13 @@ import {
 } from "../../src/dispatcher/client-headers";
 import { ShopeeDispatcher, looksLikeLoginHtml } from "../../src/dispatcher/shopee-dispatcher";
 import { createRequestSignals, fetchUpstream } from "../../src/dispatcher/upstream";
-import { ErrorCodes } from "../../src/errors/codes";
-import type { ShopeeSessionContext, ShopeeSessionProvider, StoredCookie } from "../../src/session/types";
+import { AppError, ErrorCodes } from "../../src/errors/codes";
+import type {
+  ShopeeSessionContext,
+  ShopeeSessionProvider,
+  StoredCookie,
+  StoredOrdersSnapshot,
+} from "../../src/session/types";
 
 function cookie(name: string, value: string): StoredCookie {
   return { name, value, domain: "shopee.co.id", hostOnly: true, path: "/" };
@@ -57,13 +62,18 @@ function html(body: string, status = 200): Response {
 
 function dispatcher(
   fetchImpl: ReturnType<typeof vi.fn>,
-  opts: { mutationsEnabled?: boolean; session?: ShopeeSessionContext } = {},
+  opts: {
+    mutationsEnabled?: boolean;
+    session?: ShopeeSessionContext;
+    ordersSnapshot?: () => Promise<StoredOrdersSnapshot | null>;
+  } = {},
 ) {
   const s = sessionsFor(opts.session ?? mockSession());
   const d = new ShopeeDispatcher({
     sessions: s.sessions,
     mutationsEnabled: opts.mutationsEnabled,
     fetchImpl: fetchImpl as unknown as typeof fetch,
+    ordersSnapshot: opts.ordersSnapshot,
   });
   return { d, ...s };
 }
@@ -351,6 +361,90 @@ describe("ShopeeDispatcher envelope + HTTP errors", () => {
       code: ErrorCodes.SHOPEE_AUTH_EXPIRED,
     });
     expect(html403.markExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it("403 JSON on orders.list serves the headed snapshot; cart still FORBIDDEN", async () => {
+    const snapshot: StoredOrdersSnapshot = {
+      pulledAt: 1_778_173_200_000,
+      source: "browser-export",
+      list: [{ order_id: "123456789012345" }],
+      details: { "123456789012345": { order_id: "123456789012345", full: true } },
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const href = String(input);
+      if (href.includes("/user/purchase") && !href.includes("/api/")) {
+        return html("<html>purchase</html>");
+      }
+      return json({ is_login: true, error: 90309999 }, 403);
+    });
+    const listed = dispatcher(fetchImpl, { ordersSnapshot: async () => snapshot });
+    const result = await listed.d.dispatch({ operationId: "orders.list", query: { limit: 10, offset: 0 } });
+    expect(result.status).toBe(200);
+    expect(result.data).toMatchObject({
+      error: 0,
+      data: { from_snapshot: true, order_list: [{ order_id: "123456789012345" }] },
+    });
+    expect(listed.markExpired).not.toHaveBeenCalled();
+
+    const cart = dispatcher(respondWith(() => json({ error: 90309999 }, 403)), {
+      ordersSnapshot: async () => snapshot,
+    });
+    await expect(cart.d.dispatch({ operationId: "cart.get", body: {} })).rejects.toMatchObject({
+      code: ErrorCodes.FORBIDDEN,
+    });
+  });
+
+  it("orders.detail 403 looks up the snapshot; missing id stays FORBIDDEN", async () => {
+    const snapshot: StoredOrdersSnapshot = {
+      pulledAt: 1_778_173_200_000,
+      source: "browser-export",
+      list: [],
+      details: { "123456789012345": { order_id: "123456789012345", full: true } },
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const href = String(input);
+      if (href.includes("/user/purchase") && !href.includes("/api/")) return html("<html>purchase</html>");
+      return json({ is_login: true, error: 90309999 }, 403);
+    });
+    const hit = dispatcher(fetchImpl, { ordersSnapshot: async () => snapshot });
+    const result = await hit.d.dispatch({
+      operationId: "orders.detail",
+      query: { order_id: "123456789012345" },
+    });
+    expect(result.data).toMatchObject({
+      error: 0,
+      from_snapshot: true,
+      data: { order_id: "123456789012345", full: true },
+    });
+
+    const miss = dispatcher(fetchImpl, { ordersSnapshot: async () => snapshot });
+    await expect(
+      miss.d.dispatch({ operationId: "orders.detail", query: { order_id: "99999999999" } }),
+    ).rejects.toMatchObject({ code: ErrorCodes.FORBIDDEN });
+  });
+
+  it("serves orders.list snapshot when the jar is already expired", async () => {
+    const snapshot: StoredOrdersSnapshot = {
+      pulledAt: 1_778_173_200_000,
+      source: "browser-export",
+      list: [{ order_id: "123456789012345" }],
+      details: {},
+    };
+    const fetchImpl = vi.fn();
+    const d = new ShopeeDispatcher({
+      sessions: {
+        getSession: vi.fn(async () => {
+          throw new AppError(ErrorCodes.SHOPEE_AUTH_EXPIRED, "Sambungkan akun di /connect");
+        }),
+        markExpired: vi.fn(),
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      ordersSnapshot: async () => snapshot,
+    });
+    const result = await d.dispatch({ operationId: "orders.list" });
+    expect(result.status).toBe(200);
+    expect(result.data).toMatchObject({ error: 0, data: { from_snapshot: true } });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("429 and rate envelopes keep the session", async () => {

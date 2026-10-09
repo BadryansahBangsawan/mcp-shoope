@@ -8,7 +8,8 @@ import { runCodemode, type CodemodeDispatcher } from "../codemode/run";
 import { createSpecBundle } from "../codemode/spec";
 import { ShopeeDispatcher } from "../dispatcher/shopee-dispatcher";
 import { log } from "../observability/log";
-import type { ShopeeSessionProvider } from "../session/types";
+import { sessionsDoForOwner } from "../session/shopee-session";
+import type { ShopeeSessionProvider, StoredOrdersSnapshot } from "../session/types";
 import { EXECUTE_MUTATION_TOOL, executeMutationInput, runExecuteMutation } from "./mutation-tool";
 import { registerPrompts } from "./prompts";
 import { registerResources } from "./resources";
@@ -22,6 +23,7 @@ export interface ServerDeps {
   approvals?: MutationApprovalsStub;
   dispatcher?: CodemodeDispatcher;
   limits?: Partial<CodemodeLimits>;
+  ordersSnapshot?: () => Promise<StoredOrdersSnapshot | null>;
 }
 
 const codeInput = z.object({
@@ -83,6 +85,9 @@ export function createShopeeServer(deps: ServerDeps): McpServer {
     new ShopeeDispatcher({
       sessions: deps.sessions,
       mutationsEnabled,
+      ordersSnapshot:
+        deps.ordersSnapshot ??
+        (() => sessionsDoForOwner(deps.env.SHOPEE_SESSIONS).getOrdersSnapshot()),
     });
   const tools: string[] = [];
   const approvals = deps.approvals;

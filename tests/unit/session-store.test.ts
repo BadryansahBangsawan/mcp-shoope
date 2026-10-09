@@ -178,6 +178,28 @@ describe("SessionStore save/clear", () => {
     expect(await s.getSession()).toBeNull();
   });
 
+  it("orders snapshot survives fingerprint-clear but not disconnect", async () => {
+    const { store: s, storage } = store();
+    const snap = {
+      pulledAt: 1_778_173_200_000,
+      source: "browser-export" as const,
+      list: [{ order_id: "123456789012345" }],
+      details: { "123456789012345": { order_id: "123456789012345" } },
+    };
+    await s.saveOrdersSnapshot(snap);
+    expect((await s.getOrdersSnapshot())?.list).toHaveLength(1);
+
+    const session = await s.saveSession(sessionInput());
+    const fp = await sessionFingerprint(session);
+    expect(await s.clearIfFingerprint(fp)).toBe(true);
+    expect(await s.getSession()).toBeNull();
+    expect((await s.getOrdersSnapshot())?.list).toHaveLength(1);
+
+    await s.clear();
+    expect(await s.getOrdersSnapshot()).toBeNull();
+    expect(storage.data.has("orders_snapshot")).toBe(false);
+  });
+
   it("status reports cookieCount and userPrefix, never cookies", async () => {
     const { store: s } = store({ env: plainEnv({ SHOPEE_REGION: "ID" }) });
     expect(await s.status()).toEqual({ connected: false, region: "ID" });

@@ -1,5 +1,6 @@
 import { AppError, ErrorCodes } from "../errors/codes";
 import { isStoredCookie, MAX_COOKIES } from "../connect/cookie-jar";
+import { isStoredOrdersSnapshot } from "../orders/snapshot";
 import { log } from "../observability/log";
 import {
   decryptJson,
@@ -13,16 +14,18 @@ import type {
   PendingAuthDraft,
   PendingAuthState,
   ShopeeSessionPublicStatus,
+  StoredOrdersSnapshot,
   StoredShopeeSession,
 } from "./types";
 import { maskTokenPrefix } from "./types";
 
 const SESSION_KEY = "session";
 const PENDING_KEY = "pending_auth";
+const ORDERS_KEY = "orders_snapshot";
 const RATE_PREFIX = "rate:";
 export const PENDING_TTL_MS = 10 * 60_000;
 
-type RecordKind = "session" | "pending";
+type RecordKind = "session" | "pending" | "orders";
 
 interface SealedRecord {
   v: 2;
@@ -71,7 +74,7 @@ function isV2Record(raw: unknown): raw is SealedRecord | PlainRecord {
   const r = raw as Partial<SealedRecord & PlainRecord>;
   return (
     r.v === 2 &&
-    (r.kind === "session" || r.kind === "pending") &&
+    (r.kind === "session" || r.kind === "pending" || r.kind === "orders") &&
     (r.exp === null || typeof r.exp === "number")
   );
 }
@@ -180,9 +183,32 @@ export class SessionStore {
     return record;
   }
 
+  async getOrdersSnapshot(): Promise<StoredOrdersSnapshot | null> {
+    return this.#read(ORDERS_KEY, "orders", isStoredOrdersSnapshot);
+  }
+
+  async saveOrdersSnapshot(snapshot: StoredOrdersSnapshot): Promise<StoredOrdersSnapshot> {
+    if (!isStoredOrdersSnapshot(snapshot)) {
+      throw new AppError(ErrorCodes.INVALID_INPUT, "Orders snapshot is malformed");
+    }
+    const record: StoredOrdersSnapshot = {
+      pulledAt: snapshot.pulledAt,
+      source: snapshot.source,
+      list: snapshot.list,
+      details: { ...snapshot.details },
+    };
+    await this.#write(ORDERS_KEY, "orders", record, null);
+    log("info", "session.orders_snapshot_saved", {
+      listCount: record.list.length,
+      detailCount: Object.keys(record.details).length,
+    });
+    return record;
+  }
+
   async clear(): Promise<void> {
     await this.#storage.delete(SESSION_KEY);
     await this.#storage.delete(PENDING_KEY);
+    await this.#storage.delete(ORDERS_KEY);
   }
 
   /** Compare-and-delete: clears the session only if it still has this fingerprint. */

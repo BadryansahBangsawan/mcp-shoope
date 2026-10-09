@@ -18,7 +18,8 @@
     "coverage:report": "bun run scripts/validate-coverage.ts --write-report",
     "e2e": "bun run scripts/e2e-mcp.ts",
     "deploy": "wrangler deploy",
-    "auth": "bun run scripts/auth.ts"
+    "auth": "bun run scripts/auth.ts",
+    "orders:pull": "bun run scripts/pull-orders.ts"
   },
   "engines": {
     "node": ">=20"

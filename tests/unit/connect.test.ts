@@ -5,7 +5,14 @@ import { MAX_BODY_BYTES, readPasteRequest } from "../../src/connect/result-handl
 import { ErrorCodes } from "../../src/errors/codes";
 import type { SaveSessionInput } from "../../src/session/session-store";
 import type { ShopeeSessionsStub } from "../../src/session/shopee-session";
-import { maskTokenPrefix, type PendingAuthDraft, type PendingAuthState, type StoredCookie, type StoredShopeeSession } from "../../src/session/types";
+import {
+  maskTokenPrefix,
+  type PendingAuthDraft,
+  type PendingAuthState,
+  type StoredCookie,
+  type StoredOrdersSnapshot,
+  type StoredShopeeSession,
+} from "../../src/session/types";
 
 vi.mock("../../src/connect/login-flow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/connect/login-flow")>();
@@ -41,6 +48,7 @@ const PASTE_BUNDLE = {
 function sessionsNs() {
   let stored: StoredShopeeSession | null = null;
   let pending: PendingAuthState | null = null;
+  let orders: StoredOrdersSnapshot | null = null;
 
   const stub: ShopeeSessionsStub = {
     getSession: vi.fn(async () => stored),
@@ -59,8 +67,14 @@ function sessionsNs() {
     clear: vi.fn(async () => {
       stored = null;
       pending = null;
+      orders = null;
     }),
     clearIfFingerprint: vi.fn(async () => false),
+    getOrdersSnapshot: vi.fn(async () => orders),
+    saveOrdersSnapshot: vi.fn(async (snapshot: StoredOrdersSnapshot) => {
+      orders = snapshot;
+      return snapshot;
+    }),
     status: vi.fn(async () =>
       stored
         ? {
@@ -474,6 +488,44 @@ describe("paste + status + disconnect", () => {
     expect(body).toMatchObject({ connected: true, source: "paste", userPrefix: "1234…" });
     expect(JSON.stringify(body)).not.toContain("ec-value");
     expect(body).not.toHaveProperty("cookies");
+  });
+
+  it("POST /connect/orders-import stores list+details counts, never cookies", async () => {
+    const { ns, stub } = sessionsNs();
+    const bundle = {
+      v: 1,
+      source: "browser-export",
+      pulledAt: 1_778_173_200_000,
+      list: [{ order_id: "123456789012345" }],
+      details: { "123456789012345": { order_id: "123456789012345" } },
+    };
+    const res = await handleConnectRoutes(
+      jsonReq("/connect/orders-import", { method: "POST", body: JSON.stringify({ bundle }) }),
+      env(ns),
+    );
+    expect(res?.status).toBe(200);
+    const body = (await res?.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ imported: true, listCount: 1, detailCount: 1 });
+    expect(JSON.stringify(body)).not.toContain("123456789012345");
+    expect(stub.saveOrdersSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /connect/orders-import rejects a cookie jar", async () => {
+    const { ns, stub } = sessionsNs();
+    const res = await handleConnectRoutes(
+      jsonReq("/connect/orders-import", {
+        method: "POST",
+        body: JSON.stringify({
+          v: 1,
+          source: "browser-export",
+          list: [],
+          cookies: [{ name: "SPC_EC", value: "ec-value", domain: "shopee.co.id" }],
+        }),
+      }),
+      env(ns),
+    );
+    expect(res?.status).toBe(400);
+    expect(stub.saveOrdersSnapshot).not.toHaveBeenCalled();
   });
 
   it("POST /connect/disconnect clears session+pending", async () => {

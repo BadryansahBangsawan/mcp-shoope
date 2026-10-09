@@ -24,6 +24,7 @@ import {
 } from "./html";
 import { continueWithOtp, resendOtp, runShopeeLoginFlow } from "./login-flow";
 import { isValidOtp, normalizeUsername } from "./login-parse";
+import { readOrdersImportBody, validateOrdersBundle } from "../orders/snapshot";
 import { validatePasteBundle } from "./paste";
 import {
   appErrorLike,
@@ -263,6 +264,26 @@ export async function handleConnectRoutes(
             userPrefix,
           }),
         ),
+      );
+    }
+
+    if (request.method === "POST" && url.pathname === "/connect/orders-import") {
+      const body = await readOrdersImportBody(request);
+      await assertFormCsrf(identity, body.csrf);
+      const snapshot = validateOrdersBundle(body.bundle);
+      const saved = await doStub.saveOrdersSnapshot(snapshot);
+      log("info", "connect.orders_import.success", {
+        subject: identity.subject,
+        listCount: saved.list.length,
+        detailCount: Object.keys(saved.details).length,
+      });
+      return respond(
+        jsonResponse({
+          imported: true,
+          listCount: saved.list.length,
+          detailCount: Object.keys(saved.details).length,
+          pulledAt: saved.pulledAt,
+        }),
       );
     }
 

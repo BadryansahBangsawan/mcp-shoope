@@ -53,6 +53,18 @@ export interface ShopeeSessionProvider {
 }
 
 /**
+ * Last headed-browser pull of purchase history. Separate Durable Object key from
+ * the cookie jar so a 401 fingerprint-clear does not drop the snapshot.
+ * Never holds cookies or passwords.
+ */
+export interface StoredOrdersSnapshot {
+  pulledAt: number;
+  source: "browser-export";
+  list: unknown[];
+  details: Record<string, unknown>;
+}
+
+/**
  * Short-lived OTP state between /connect/login and /connect/otp.
  * Never holds the password: the owner re-enters it on a fresh login.
  */

@@ -43,6 +43,7 @@ export function runtimePaths(root = packageRoot()) {
     authDir,
     profileDir: path.join(authDir, "pw-profile"),
     pastePath: path.join(authDir, "paste-tokens.json"),
+    ordersSnapshotPath: path.join(authDir, "orders-snapshot.json"),
     authMetaPath: path.join(authDir, "meta.json"),
     cookieNamesPath: path.join(authDir, "cookie-names.txt"),
     operatorDonePath: path.join(authDir, "operator-done"),
@@ -113,19 +114,30 @@ export function cookieNamesLine(bundle: { cookies: Array<{ name: string }> }): s
 
 export function chromiumExecutable(bundled: string): string {
   if (fs.existsSync(bundled)) return bundled;
-  const root = path.join(os.homedir(), "Library/Caches/ms-playwright");
-  if (!fs.existsSync(root)) return bundled;
-  const dirs = fs
-    .readdirSync(root)
-    .filter((d) => d.startsWith("chromium-") && !d.includes("headless"))
-    .sort()
-    .reverse();
-  for (const d of dirs) {
-    const exe = path.join(
-      root,
-      d,
-      "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    );
+  const roots = [
+    path.join(os.homedir(), "Library/Caches/ms-playwright"),
+    path.join(os.homedir(), ".cache/ms-playwright"),
+  ];
+  const relativeExes = [
+    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "chrome-linux/chrome",
+    "chrome-linux64/chrome",
+  ];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const dirs = fs
+      .readdirSync(root)
+      .filter((d) => d.startsWith("chromium-") && !d.includes("headless"))
+      .sort()
+      .reverse();
+    for (const d of dirs) {
+      for (const rel of relativeExes) {
+        const exe = path.join(root, d, rel);
+        if (fs.existsSync(exe)) return exe;
+      }
+    }
+  }
+  for (const exe of ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]) {
     if (fs.existsSync(exe)) return exe;
   }
   return bundled;

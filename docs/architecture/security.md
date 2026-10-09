@@ -20,6 +20,8 @@ Dispatcher dan hop login mengirim identitas browser PC (`User-Agent` Chrome, `Ac
 
 403 JSON (bukan HTML login) = `FORBIDDEN`, sesi tetap. 403 HTML login = expire. 429 = `SHOPEE_RATE_LIMITED`, sesi tetap.
 
+Untuk `orders.list` / `orders.detail` saja: jika 403 JSON (atau jar kedaluwarsa) dan ada snapshot headed-browser di Durable Object (`kind: orders`, kunci terpisah dari cookie), dispatcher mengembalikan snapshot itu (`from_snapshot: true`). Import hanya owner + CSRF. Disconnect (`clear()`) menghapus snapshot; `clearIfFingerprint` tidak. Jangan log isi pesanan.
+
 ## Yang tidak dilindungi / residual
 
 - Cookie sesi setara akses akun. Siapa pun dengan sesi Durable Object + owner cookie bisa membaca data akun itu.

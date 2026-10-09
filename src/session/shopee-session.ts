@@ -6,6 +6,7 @@ import type {
   ShopeeSessionContext,
   ShopeeSessionProvider,
   ShopeeSessionPublicStatus,
+  StoredOrdersSnapshot,
   StoredShopeeSession,
 } from "./types";
 
@@ -17,6 +18,8 @@ export interface ShopeeSessionsStub {
   saveSession(input: SaveSessionInput): Promise<StoredShopeeSession>;
   clear(): Promise<void>;
   clearIfFingerprint(fingerprint: string): Promise<boolean>;
+  getOrdersSnapshot(): Promise<StoredOrdersSnapshot | null>;
+  saveOrdersSnapshot(snapshot: StoredOrdersSnapshot): Promise<StoredOrdersSnapshot>;
   savePending(draft: PendingAuthDraft): Promise<PendingAuthState>;
   getPending(): Promise<PendingAuthState | null>;
   takePending(): Promise<PendingAuthState | null>;

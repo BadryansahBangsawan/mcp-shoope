@@ -2,10 +2,11 @@ import { CookieJar } from "../connect/cookie-jar";
 import { looksLikeHtml, parseLoginJson, isSuccessError } from "../connect/login-parse";
 import { AppError, ErrorCodes } from "../errors/codes";
 import { log } from "../observability/log";
+import { lookupOrderDetail, sliceOrdersList } from "../orders/snapshot";
 import { getOperation } from "../registry/operations";
 import type { ApiOperation } from "../registry/types";
 import { validateOperationInput } from "../registry/validate";
-import type { ShopeeSessionContext, ShopeeSessionProvider } from "../session/types";
+import type { ShopeeSessionContext, ShopeeSessionProvider, StoredOrdersSnapshot } from "../session/types";
 import { HOSTS, assertAllowedUrl, resolveHost } from "./allowlist";
 import {
   applyShopeeBrowserHeaders,
@@ -76,17 +77,21 @@ export class ShopeeDispatcher {
   #limits: DispatcherLimits;
   #fetchImpl: typeof fetch;
   #mutationsEnabled: boolean;
+  #ordersSnapshot?: () => Promise<StoredOrdersSnapshot | null>;
 
   constructor(options: {
     sessions: ShopeeSessionProvider;
     mutationsEnabled?: boolean;
     limits?: Partial<DispatcherLimits>;
     fetchImpl?: typeof fetch;
+    /** Headed-browser pull; served only for orders.list/detail after 403 or expired jar. */
+    ordersSnapshot?: () => Promise<StoredOrdersSnapshot | null>;
   }) {
     this.#sessions = options.sessions;
     this.#mutationsEnabled = options.mutationsEnabled ?? false;
     this.#limits = { ...DEFAULT_LIMITS, ...options.limits };
     this.#fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.#ordersSnapshot = options.ordersSnapshot;
   }
 
   /**
@@ -98,7 +103,14 @@ export class ShopeeDispatcher {
   }
 
   async dispatch(req: DispatchRequest, opts: DispatchOptions = {}): Promise<DispatchResult> {
-    const prepared = await this.#prepare(req, opts);
+    let prepared: Prepared;
+    try {
+      prepared = await this.#prepare(req, opts);
+    } catch (err) {
+      const served = await this.#serveOrdersSnapshot(req, err);
+      if (served) return served;
+      throw err;
+    }
     log("info", "shopee.dispatch", {
       operationId: prepared.op.operationId,
       method: prepared.op.method,
@@ -123,6 +135,8 @@ export class ShopeeDispatcher {
     const outcome = await fetchUpstream(prepared.url, prepared.init, ctx);
     if (outcome.kind === "login-redirect") {
       await this.#expire(prepared.op, prepared.session, "login-redirect");
+      const served = await this.#serveOrdersSnapshot(prepared.req);
+      if (served) return served;
       throw new AppError(ErrorCodes.SHOPEE_AUTH_EXPIRED, "Sesi Shopee kedaluwarsa; sambungkan lagi di /connect");
     }
     const response = outcome.response;
@@ -130,11 +144,15 @@ export class ShopeeDispatcher {
     const http = this.#httpStatus(prepared.op, response.status, text);
     if (http === "auth") {
       await this.#expire(prepared.op, prepared.session, `http_${response.status}`);
+      const served = await this.#serveOrdersSnapshot(prepared.req);
+      if (served) return served;
       throw new AppError(ErrorCodes.SHOPEE_AUTH_EXPIRED, "Sesi Shopee kedaluwarsa; sambungkan lagi di /connect");
     }
     if (http === "forbidden") {
       const snippet = text.trim().startsWith("{") ? text.replace(/\s+/g, " ").slice(0, 160) : "nonjson";
       log("warn", "shopee.forbidden", { operationId: prepared.op.operationId, snippet });
+      const served = await this.#serveOrdersSnapshot(prepared.req);
+      if (served) return served;
       throw new AppError(ErrorCodes.FORBIDDEN, `Upstream forbidden (403) for ${prepared.op.operationId}`);
     }
     if (http === "rate") {
@@ -143,6 +161,8 @@ export class ShopeeDispatcher {
     const parsed = parseEnvelope(prepared.op, response.status, text);
     if (parsed.kind === "auth") {
       await this.#expire(prepared.op, prepared.session, "error_auth");
+      const served = await this.#serveOrdersSnapshot(prepared.req);
+      if (served) return served;
       throw new AppError(ErrorCodes.SHOPEE_AUTH_EXPIRED, "Sesi Shopee kedaluwarsa; sambungkan lagi di /connect");
     }
     if (parsed.kind === "error") throw parsed.error;
@@ -264,6 +284,48 @@ export class ShopeeDispatcher {
     if (nextCookie) xhrHeaders.set("cookie", nextCookie);
     const csrf = prepared.jar.get(prepared.url, "csrftoken") || prepared.session.csrfToken || "";
     if (csrf) xhrHeaders.set("x-csrftoken", csrf);
+  }
+
+  async #serveOrdersSnapshot(req: DispatchRequest, reason?: unknown): Promise<DispatchResult | null> {
+    const id = req.operationId;
+    if (id !== "orders.list" && id !== "orders.detail") return null;
+    if (reason !== undefined) {
+      if (!(reason instanceof AppError) || reason.code !== ErrorCodes.SHOPEE_AUTH_EXPIRED) return null;
+    }
+    if (!this.#ordersSnapshot) return null;
+    let snapshot: StoredOrdersSnapshot | null;
+    try {
+      snapshot = await this.#ordersSnapshot();
+    } catch {
+      return null;
+    }
+    if (!snapshot) return null;
+    if (id === "orders.list") {
+      const q = req.query ?? {};
+      const page = sliceOrdersList(snapshot, {
+        limit: typeof q.limit === "number" ? q.limit : undefined,
+        offset: typeof q.offset === "number" ? q.offset : undefined,
+      });
+      log("info", "shopee.orders_snapshot", {
+        operationId: id,
+        listCount: snapshot.list.length,
+        detailCount: Object.keys(snapshot.details).length,
+      });
+      return { operationId: id, status: 200, data: { error: 0, data: page } };
+    }
+    const orderId = String(req.query?.order_id ?? "");
+    const detail = lookupOrderDetail(snapshot, orderId);
+    if (detail === undefined) return null;
+    log("info", "shopee.orders_snapshot", {
+      operationId: id,
+      listCount: snapshot.list.length,
+      detailCount: Object.keys(snapshot.details).length,
+    });
+    return {
+      operationId: id,
+      status: 200,
+      data: { error: 0, data: detail, from_snapshot: true, pulled_at: snapshot.pulledAt },
+    };
   }
 
   async #expire(op: ApiOperation, session: ShopeeSessionContext, reason: string): Promise<void> {

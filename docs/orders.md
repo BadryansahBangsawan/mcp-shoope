@@ -16,4 +16,6 @@ Query: `order_id` (wajib, string). Jangan dump PII penerima.
 
 Query: none. Hitungan tab status.
 
+Jika Worker mendapat 403 JSON (`error: 90309999`, `is_login: true`) untuk `orders.list` / `orders.detail`, dispatcher menyajikan snapshot terakhir dari browser lokal (`from_snapshot: true`, `pulled_at`). Snapshot diimpor owner-gated `POST /connect/orders-import` setelah `bun run orders:pull` (Playwright headed, profil `.runtime/auth/pw-profile`). Disconnect menghapus snapshot; 401 fingerprint-clear tidak. Jangan dump PII.
+
 Read-only. Cancel / checkout = exclusions.

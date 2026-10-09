@@ -22,7 +22,14 @@ class OwnerJar {
 
 export type PasteResult = { connected?: boolean; cookieCount?: number; source?: string };
 
-export async function pasteToWorker(bundle: PasteBundle, base = workerBase()): Promise<PasteResult> {
+export type OrdersImportResult = {
+  imported?: boolean;
+  listCount?: number;
+  detailCount?: number;
+  pulledAt?: number;
+};
+
+async function ownerConnectSession(base: string): Promise<{ jar: OwnerJar; csrf: string }> {
   const vars = loadDevVars();
   const password = vars.OWNER_PASSWORD;
   if (!password) throw new Error("OWNER_PASSWORD missing in .dev.vars");
@@ -48,7 +55,11 @@ export async function pasteToWorker(bundle: PasteBundle, base = workerBase()): P
   jar.absorb(connectPage);
   const connectCsrf = /name="csrf" value="([a-f0-9]{32})"/.exec(await connectPage.text())?.[1];
   if (!connectCsrf) throw new Error("GET /connect has no CSRF");
+  return { jar, csrf: connectCsrf };
+}
 
+export async function pasteToWorker(bundle: PasteBundle, base = workerBase()): Promise<PasteResult> {
+  const { jar, csrf } = await ownerConnectSession(base);
   const paste = await fetch(`${base}/connect/paste`, {
     method: "POST",
     headers: {
@@ -56,11 +67,34 @@ export async function pasteToWorker(bundle: PasteBundle, base = workerBase()): P
       accept: "application/json",
       cookie: jar.header(),
     },
-    body: JSON.stringify({ csrf: connectCsrf, bundle }),
+    body: JSON.stringify({ csrf, bundle }),
   });
   const body = (await paste.json()) as Record<string, unknown>;
   if (!paste.ok || body.connected !== true) {
     throw new Error(`paste failed ${paste.status}: ${JSON.stringify({ code: body.code, message: body.message })}`);
   }
   return body as PasteResult;
+}
+
+export async function importOrdersToWorker(
+  bundle: { v: 1; source: "browser-export"; pulledAt: number; list: unknown[]; details: Record<string, unknown> },
+  base = workerBase(),
+): Promise<OrdersImportResult> {
+  const { jar, csrf } = await ownerConnectSession(base);
+  const res = await fetch(`${base}/connect/orders-import`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      cookie: jar.header(),
+    },
+    body: JSON.stringify({ csrf, bundle }),
+  });
+  const body = (await res.json()) as Record<string, unknown>;
+  if (!res.ok || body.imported !== true) {
+    throw new Error(
+      `orders-import failed ${res.status}: ${JSON.stringify({ code: body.code, message: body.message })}`,
+    );
+  }
+  return body as OrdersImportResult;
 }

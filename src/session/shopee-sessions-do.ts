@@ -1,6 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { SessionStore, type SaveSessionInput } from "./session-store";
-import type { PendingAuthDraft, PendingAuthState, ShopeeSessionPublicStatus, StoredShopeeSession } from "./types";
+import type {
+  PendingAuthDraft,
+  PendingAuthState,
+  ShopeeSessionPublicStatus,
+  StoredOrdersSnapshot,
+  StoredShopeeSession,
+} from "./types";
 
 export type { SaveSessionInput } from "./session-store";
 
@@ -32,6 +38,14 @@ export class ShopeeSessionsDO extends DurableObject<Env> {
 
   clearIfFingerprint(fingerprint: string): Promise<boolean> {
     return this.#store.clearIfFingerprint(fingerprint);
+  }
+
+  getOrdersSnapshot(): Promise<StoredOrdersSnapshot | null> {
+    return this.#store.getOrdersSnapshot();
+  }
+
+  saveOrdersSnapshot(snapshot: StoredOrdersSnapshot): Promise<StoredOrdersSnapshot> {
+    return this.#store.saveOrdersSnapshot(snapshot);
   }
 
   savePending(draft: PendingAuthDraft): Promise<PendingAuthState> {
