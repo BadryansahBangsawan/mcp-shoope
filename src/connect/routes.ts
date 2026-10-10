@@ -6,7 +6,7 @@ import {
   sessionsDoForOwner,
   type ShopeeSessionsStub,
 } from "../session/shopee-session";
-import { maskTokenPrefix, type PendingAuthState } from "../session/types";
+import { maskTokenPrefix, type PendingAuthState, type StoredOrdersSnapshot } from "../session/types";
 import { htmlResponse } from "../web/html";
 import {
   assertFormCsrf,
@@ -305,11 +305,27 @@ export async function handleConnectRoutes(
   }
 }
 
+function publicOrdersSnapshot(snapshot: StoredOrdersSnapshot | null): {
+  present: boolean;
+  pulledAt?: number;
+  listCount?: number;
+  detailCount?: number;
+} {
+  if (!snapshot) return { present: false };
+  return {
+    present: true,
+    pulledAt: snapshot.pulledAt,
+    listCount: snapshot.list.length,
+    detailCount: Object.keys(snapshot.details).length,
+  };
+}
+
 async function connectStatus(
   doStub: ShopeeSessionsStub,
   identity: ConnectIdentity,
 ): Promise<Record<string, unknown>> {
-  const doStatus = await doStub.status();
+  const [doStatus, snapshot] = await Promise.all([doStub.status(), doStub.getOrdersSnapshot()]);
+  const ordersSnapshot = publicOrdersSnapshot(snapshot);
   if (doStatus.connected) {
     return {
       connected: true,
@@ -319,12 +335,14 @@ async function connectStatus(
       cookieCount: doStatus.cookieCount,
       userPrefix: doStatus.userPrefix,
       subject: identity.subject,
+      ordersSnapshot,
     };
   }
   return {
     connected: false,
     region: doStatus.region,
     subject: identity.subject,
+    ordersSnapshot,
   };
 }
 

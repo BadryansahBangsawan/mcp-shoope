@@ -90,7 +90,15 @@ export async function importOrdersToWorker(
     },
     body: JSON.stringify({ csrf, bundle }),
   });
-  const body = (await res.json()) as Record<string, unknown>;
+  const text = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `orders-import non-JSON HTTP ${res.status} type=${res.headers.get("content-type") ?? "?"} bytes=${text.length}`,
+    );
+  }
   if (!res.ok || body.imported !== true) {
     throw new Error(
       `orders-import failed ${res.status}: ${JSON.stringify({ code: body.code, message: body.message })}`,

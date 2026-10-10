@@ -19,7 +19,10 @@
     "e2e": "bun run scripts/e2e-mcp.ts",
     "deploy": "wrangler deploy",
     "auth": "bun run scripts/auth.ts",
-    "orders:pull": "bun run scripts/pull-orders.ts"
+    "orders:pull": "bun run scripts/pull-orders.ts",
+    "orders:pull-brave": "bun run scripts/brave-qr-pull.ts",
+    "orders:pull-cdp": "bun run scripts/brave-cdp-pull.ts",
+    "voucher:capture-body": "bun run scripts/capture-voucher-body.ts"
   },
   "engines": {
     "node": ">=20"

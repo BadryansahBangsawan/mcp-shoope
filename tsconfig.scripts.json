@@ -3,7 +3,8 @@
   // which hides process.exit narrowing, so scripts are checked separately.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["scripts/**/*.ts"],
   "exclude": ["scripts/inspect-chat.ts", "scripts/list-chat-resources.ts", "scripts/watch-chat-click.ts"]

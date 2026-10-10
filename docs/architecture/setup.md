@@ -28,7 +28,7 @@ Buka `/mcp` di browser tanpa Bearer = **401** (RFC 6750). Cek hidup lewat `/heal
 
 ## 3. Capture (prasyarat operasi read)
 
-Read v1 sudah `observed` (12 ops). Capture lanjutan hanya untuk path baru. Login di browser sendiri ke `shopee.co.id`. Export Network (HAR keys-only). Jangan commit HAR/cookie. Isi `docs/*.md` lalu daftarkan ops dengan evidence `observed`.
+Read v1 sudah `observed` (12 ops). Capture lanjutan hanya untuk path baru. Login di browser sendiri ke `shopee.co.id`. Export Network (HAR keys-only). Jangan commit HAR/cookie. Isi `docs/*.md` lalu daftarkan ops dengan evidence `observed`. Snapshot pesanan: `bun run orders:pull` (profil Playwright), `bun run orders:pull-brave` (QR Brave lokal, bukan hop Connect), atau `bun run orders:pull-cdp` (CDP ke Brave copy-profile) lalu impor owner. Body `voucher.list`: recapture headed (`bun run voucher:capture-body` / `orders:pull-cdp`); jangan invent integer.
 
 Tanpa sesi Connect: `execute` gagal `SHOPEE_AUTH_EXPIRED`. Chat **tidak** di v1: tab ChatEasy memakai `seller.shopee.co.id` (tidak di-allowlist; jangan tulis METHOD URL).
 

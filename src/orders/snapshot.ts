@@ -9,7 +9,7 @@ export const MAX_SNAPSHOT_DETAILS = 2_000;
 /** Larger than cookie paste: a 5-month list + details can be ~1–2 MB JSON. */
 export const MAX_ORDERS_BODY_BYTES = 2_000_000;
 
-const LIST_KEYS = ["order_list", "details", "orders", "list"] as const;
+const LIST_KEYS = ["order_list", "order_or_checkout_data", "details", "orders", "list"] as const;
 const ID_KEYS = ["order_id", "orderid", "orderId"] as const;
 
 export function isStoredOrdersSnapshot(v: unknown): v is StoredOrdersSnapshot {
@@ -85,6 +85,7 @@ export function listItemsFromPage(payload: unknown): unknown[] {
     if (Array.isArray(v)) return v;
   }
   if (o.data !== undefined) return listItemsFromPage(o.data);
+  if (o.new_data !== undefined) return listItemsFromPage(o.new_data);
   return [];
 }
 

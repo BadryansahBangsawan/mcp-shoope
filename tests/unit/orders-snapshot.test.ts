@@ -58,6 +58,12 @@ describe("listItemsFromPage / orderIdOf", () => {
     expect(orderIdOf({ info: { order_id: ID } })).toBe(ID);
     expect(orderIdOf({ a: { b: { c: { d: { e: { order_id: ID } } } } } })).toBeUndefined();
   });
+
+  it("unwraps new_data.order_or_checkout_data from the purchase-page list XHR", () => {
+    const item = { order_list_detail: { info_card: { order_id: Number(ID) } } };
+    expect(listItemsFromPage({ error: 0, new_data: { order_or_checkout_data: [item] } })).toEqual([item]);
+    expect(orderIdOf(item)).toBe(ID);
+  });
 });
 
 describe("sliceOrdersList / lookupOrderDetail", () => {

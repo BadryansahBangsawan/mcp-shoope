@@ -23,6 +23,7 @@ import {
   readBodyCapped,
   type UpstreamContext,
 } from "./upstream";
+import { fillVoucherListBody } from "./voucher-defaults";
 
 export interface DispatchRequest {
   operationId: string;
@@ -230,7 +231,10 @@ export class ShopeeDispatcher {
     const init: RequestInit = { method: op.method, headers, redirect: "manual" };
     if (op.method !== "GET" && op.method !== "DELETE") {
       headers.set("content-type", "application/json");
-      init.body = JSON.stringify(stripReservedBody(input.body));
+      const stripped = stripReservedBody(input.body);
+      init.body = JSON.stringify(
+        op.operationId === "voucher.list" ? fillVoucherListBody(stripped) : stripped,
+      );
     }
     return { req, op, session, host, path, url, init, jar };
   }

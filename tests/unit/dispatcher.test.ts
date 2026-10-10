@@ -12,6 +12,7 @@ import {
 } from "../../src/dispatcher/client-headers";
 import { ShopeeDispatcher, looksLikeLoginHtml } from "../../src/dispatcher/shopee-dispatcher";
 import { createRequestSignals, fetchUpstream } from "../../src/dispatcher/upstream";
+import { fillVoucherListBody, VOUCHER_LIST_FILL } from "../../src/dispatcher/voucher-defaults";
 import { AppError, ErrorCodes } from "../../src/errors/codes";
 import type {
   ShopeeSessionContext,
@@ -101,6 +102,17 @@ function apiCall(fetchImpl: ReturnType<typeof vi.fn>): number {
   expect(i).toBeGreaterThanOrEqual(0);
   return i;
 }
+
+describe("fillVoucherListBody", () => {
+  it("spreads headed-capture fill under caller keys", () => {
+    expect(fillVoucherListBody({})).toEqual(VOUCHER_LIST_FILL);
+    expect(fillVoucherListBody(undefined)).toEqual(VOUCHER_LIST_FILL);
+    expect(fillVoucherListBody({ limit: 10 })).toMatchObject({
+      ...VOUCHER_LIST_FILL,
+      limit: 10,
+    });
+  });
+});
 
 describe("looksLikeLoginHtml", () => {
   it("matches buyer login HTML and rejects JSON", () => {
@@ -235,6 +247,46 @@ describe("ShopeeDispatcher cookie + CSRF", () => {
     expect(sentHeaders(fetchImpl, i).get("content-type")).toBe("application/json");
     expect(sentHeaders(fetchImpl, i).get("cookie")).toContain("SPC_EC=ec");
     expect(sentHeaders(fetchImpl, i).get("referer")).toBe(refererForOperation("cart.get"));
+  });
+
+  it("fills voucher.list POST from headed capture when the caller omits a body", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: { vouchers: [] } }));
+    const { d } = dispatcher(fetchImpl);
+    const result = await d.dispatch({ operationId: "voucher.list" });
+    expect(result.status).toBe(200);
+    const i = apiCall(fetchImpl);
+    expect(new URL(sentUrl(fetchImpl, i)).pathname).toBe("/api/v2/voucher_wallet/get_user_voucher_list");
+    expect(sentInit(fetchImpl, i).method).toBe("POST");
+    const posted = JSON.parse(String(sentInit(fetchImpl, i).body));
+    expect(posted).toEqual(VOUCHER_LIST_FILL);
+    expect(Array.isArray(posted.addition)).toBe(true);
+    expect(Array.isArray(posted.exclude_user_voucher_list_type)).toBe(true);
+    expect(posted.priority_voucher_list).toBeNull();
+    expect(typeof posted.version).toBe("number");
+    expect(typeof posted.voucher_status).toBe("number");
+    expect(typeof posted.limit).toBe("number");
+    expect(typeof posted.need_statistics).toBe("boolean");
+  });
+
+  it("lets the caller override voucher.list fill keys after validation", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: {} }));
+    const { d } = dispatcher(fetchImpl);
+    await d.dispatch({ operationId: "voucher.list", body: { limit: 10 } });
+    const posted = JSON.parse(String(sentInit(fetchImpl, apiCall(fetchImpl)).body));
+    expect(posted.limit).toBe(10);
+    expect(posted.version).toBe(VOUCHER_LIST_FILL.version);
+    expect(posted.voucher_status).toBe(VOUCHER_LIST_FILL.voucher_status);
+    expect(posted.addition).toEqual(VOUCHER_LIST_FILL.addition);
+  });
+
+  it("does not fill voucher.meta or cart.get bodies", async () => {
+    const fetchImpl = respondWith(() => json({ error: 0, data: {} }));
+    const { d } = dispatcher(fetchImpl);
+    await d.dispatch({ operationId: "voucher.meta", body: {} });
+    expect(sentInit(fetchImpl, apiCall(fetchImpl)).body).toBe("{}");
+    fetchImpl.mockClear();
+    await d.dispatch({ operationId: "cart.get", body: {} });
+    expect(sentInit(fetchImpl, apiCall(fetchImpl)).body).toBe("{}");
   });
 
   it("sends the purchase-page Referer for orders.list, not the homepage", async () => {

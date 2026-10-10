@@ -485,9 +485,36 @@ describe("paste + status + disconnect", () => {
     });
     const res = await handleConnectRoutes(jsonReq("/connect/status"), env(ns));
     const body = (await res?.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ connected: true, source: "paste", userPrefix: "1234…" });
+    expect(body).toMatchObject({
+      connected: true,
+      source: "paste",
+      userPrefix: "1234…",
+      ordersSnapshot: { present: false },
+    });
     expect(JSON.stringify(body)).not.toContain("ec-value");
     expect(body).not.toHaveProperty("cookies");
+  });
+
+  it("GET /connect/status reports snapshot counts without order ids, even when disconnected", async () => {
+    const { ns, stub } = sessionsNs();
+    await stub.saveOrdersSnapshot({
+      pulledAt: 1_778_173_200_000,
+      source: "browser-export",
+      list: [{ order_id: "123456789012345" }],
+      details: { "123456789012345": { order_id: "123456789012345" } },
+    });
+    const res = await handleConnectRoutes(jsonReq("/connect/status"), env(ns));
+    const body = (await res?.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      connected: false,
+      ordersSnapshot: {
+        present: true,
+        pulledAt: 1_778_173_200_000,
+        listCount: 1,
+        detailCount: 1,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("123456789012345");
   });
 
   it("POST /connect/orders-import stores list+details counts, never cookies", async () => {

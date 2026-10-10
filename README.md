@@ -45,7 +45,7 @@ Dua password: password **owner** (Worker) vs password **Shopee**. Klien MCP tida
 
 - **ToS.** Ini XHR web tidak resmi. Melanggar ketentuan Shopee (bot/emulator). Hanya akun milik operator, read-only, bukan mass scrape.
 - **PII.** Profil, alamat, telepon, isi pesanan ada di JSON upstream. Tool tidak menyensor field. Jangan dump ke log/chat publik.
-- **Anti-bot.** Login dari IP Worker bisa gagal (403/captcha). Cookie yang sudah tersimpan bisa tetap 403 saat di-replay dari Cloudflare.
+- **Anti-bot.** Login dari IP Worker bisa gagal (403/captcha). Cookie yang sudah tersimpan bisa tetap 403 saat di-replay dari Cloudflare. `orders.list` / `orders.detail` jatuh ke snapshot headed (`bun run orders:pull`, `orders:pull-brave`, atau `orders:pull-cdp`); `cart.get` tetap 403.
 - **Sesi.** Cookie jar = akses akun. Jangan bagikan paste JSON.
 
 Repo privat operator. Tidak ada LICENSE publik.

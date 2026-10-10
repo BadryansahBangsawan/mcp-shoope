@@ -28,6 +28,14 @@ const PAGE_SIZE = 20;
 
 type FetchResult = { status: number; json: unknown };
 
+const SKIP_CAPTURED_HEADERS = new Set([
+  "cookie",
+  "host",
+  "content-length",
+  "connection",
+  "accept-encoding",
+]);
+
 function asBrowserCookies(
   cookies: Array<{ name: string; value: string; domain: string; path: string; expires: number }>,
 ): BrowserCookie[] {
@@ -46,20 +54,49 @@ function envelopeOk(json: unknown): boolean {
   return e === 0 || e === "0" || e === "" || e === null || e === undefined;
 }
 
-async function pageGet(page: Page, apiPath: string, query: Record<string, string>): Promise<FetchResult> {
+function isApiPath(url: string, apiPath: string): boolean {
+  try {
+    return new URL(url).pathname === apiPath;
+  } catch {
+    return false;
+  }
+}
+
+/** Copy the purchase page's own XHR headers. Do not mint af-ac-enc-* / _oft. */
+function capturedHeaderBag(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (SKIP_CAPTURED_HEADERS.has(k.toLowerCase())) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+async function pageGet(
+  page: Page,
+  apiPath: string,
+  query: Record<string, string>,
+  extraHeaders: Record<string, string> = {},
+): Promise<FetchResult> {
   return page.evaluate(
-    async ({ apiPath, query, origin }) => {
+    async ({ apiPath, query, origin, extraHeaders }) => {
       const url = new URL(apiPath, origin);
       for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+      const headers: Record<string, string> = {
+        accept: "application/json",
+        "x-api-source": "pc",
+        "x-requested-with": "XMLHttpRequest",
+        "x-shopee-language": "id",
+        ...extraHeaders,
+      };
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === "x-csrftoken")) {
+        const m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+        if (m?.[1]) headers["x-csrftoken"] = decodeURIComponent(m[1]);
+      }
       const res = await fetch(url.toString(), {
         method: "GET",
         credentials: "include",
-        headers: {
-          accept: "application/json",
-          "x-api-source": "pc",
-          "x-requested-with": "XMLHttpRequest",
-          "x-shopee-language": "id",
-        },
+        headers,
       });
       let json: unknown = null;
       try {
@@ -69,20 +106,26 @@ async function pageGet(page: Page, apiPath: string, query: Record<string, string
       }
       return { status: res.status, json };
     },
-    { apiPath, query, origin: "https://shopee.co.id" },
+    { apiPath, query, origin: "https://shopee.co.id", extraHeaders },
   );
 }
 
-async function pullList(page: Page): Promise<unknown[]> {
-  const list: unknown[] = [];
-  let offset = 0;
+async function pullList(
+  page: Page,
+  extraHeaders: Record<string, string>,
+  seed: unknown[] = [],
+): Promise<unknown[]> {
+  const list: unknown[] = [...seed];
+  let offset = list.length;
   while (list.length < MAX_SNAPSHOT_ORDERS) {
     const limit = Math.min(PAGE_SIZE, MAX_SNAPSHOT_ORDERS - list.length);
-    const result = await pageGet(page, LIST_PATH, { limit: String(limit), offset: String(offset) });
+    const result = await pageGet(page, LIST_PATH, { limit: String(limit), offset: String(offset) }, extraHeaders);
     if (result.status === 403 || result.status === 401) {
+      if (list.length) break;
       throw new Error(`orders.list HTTP ${result.status} from the local browser (not a Worker IP issue)`);
     }
     if (result.status !== 200 || !envelopeOk(result.json)) {
+      if (list.length) break;
       throw new Error(`orders.list failed HTTP ${result.status}`);
     }
     const items = listItemsFromPage(result.json);
@@ -94,11 +137,16 @@ async function pullList(page: Page): Promise<unknown[]> {
   return list.slice(0, MAX_SNAPSHOT_ORDERS);
 }
 
-async function pullDetails(page: Page, ids: string[]): Promise<Record<string, unknown>> {
+async function pullDetails(
+  page: Page,
+  ids: string[],
+  extraHeaders: Record<string, string>,
+): Promise<Record<string, unknown>> {
   const details: Record<string, unknown> = {};
   for (const id of ids.slice(0, MAX_SNAPSHOT_DETAILS)) {
-    const result = await pageGet(page, DETAIL_PATH, { order_id: id });
+    const result = await pageGet(page, DETAIL_PATH, { order_id: id }, extraHeaders);
     if (result.status === 403 || result.status === 401) {
+      if (Object.keys(details).length) break;
       throw new Error(`orders.detail HTTP ${result.status} from the local browser`);
     }
     if (result.status !== 200 || !envelopeOk(result.json)) continue;
@@ -133,20 +181,39 @@ async function main(): Promise<void> {
     }
 
     const page = context.pages()[0] ?? (await context.newPage());
-    await page.goto(PURCHASE_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const pendingList = page.waitForResponse((res) => isApiPath(res.url(), LIST_PATH), { timeout: 60_000 });
+    await page.goto(PURCHASE_URL, { waitUntil: "load", timeout: 60_000 });
     if (page.url().includes("/buyer/login")) {
       process.stderr.write("Purchase page redirected to login. Run `bun run auth` first.\n");
       process.exitCode = 1;
       return;
     }
 
-    const list = await pullList(page);
+    let extraHeaders: Record<string, string> = {};
+    let seed: unknown[] = [];
+    try {
+      const first = await pendingList;
+      extraHeaders = capturedHeaderBag(first.request().headers());
+      if (first.status() === 401 || first.status() === 403) {
+        throw new Error(
+          `orders.list HTTP ${first.status()} from the page's own XHR. Run \`bun run auth\` first.`,
+        );
+      }
+      if (first.ok()) {
+        const json: unknown = await first.json().catch(() => null);
+        if (envelopeOk(json)) seed = listItemsFromPage(json);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("bun run auth")) throw err;
+    }
+
+    const list = await pullList(page, extraHeaders, seed);
     const ids: string[] = [];
     for (const item of list) {
       const id = orderIdOf(item);
       if (id && !ids.includes(id)) ids.push(id);
     }
-    const details = await pullDetails(page, ids);
+    const details = await pullDetails(page, ids, extraHeaders);
     const snapshot = {
       v: 1 as const,
       source: "browser-export" as const,
